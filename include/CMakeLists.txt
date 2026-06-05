@@ -11,3 +11,8 @@ if(PROJECT_IS_TOP_LEVEL)
 else()
     target_include_directories(GSL SYSTEM INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>)
 endif()
+
+# GSL_SUPPRESS_STRICT_MODE option
+if(GSL_SUPPRESS_STRICT_MODE)
+    target_compile_definitions(GSL INTERFACE GSL_SUPPRESS_STRICT_MODE)
+endif()
