@@ -1,0 +1,34 @@
+diff --git a/tests/CMakeLists.txt b/tests/CMakeLists.txt
+index d583c24..e79ed4e 100644
+--- a/tests/CMakeLists.txt
++++ b/tests/CMakeLists.txt
+@@ -311,3 +311,29 @@ target_link_libraries(gsl_noexcept_tests
+     gsl_tests_config_noexcept
+ )
+ add_test(gsl_noexcept_tests gsl_noexcept_tests)
++
++# GSL_SUPPRESS test: verify GSL_SUPPRESS(26481) correctly suppresses C++ Core Guidelines warnings
++add_library(gsl_suppress_test_config INTERFACE)
++if(MSVC AND CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
++    target_compile_options(gsl_suppress_test_config INTERFACE
++        /EHsc
++        /W4
++        /WX
++        /analyze
++        /analyze:WX-
++        /wd4996
++        /wd26409
++        /wd26426
++        /wd26440
++        /wd26446
++        /wd26472
++    )
++    add_executable(gsl_suppress_tests gsl_suppress_tests.cpp)
++    target_link_libraries(gsl_suppress_tests
++        Microsoft.GSL::GSL
++        gsl_suppress_test_config
++        ${GTestMain_LIBRARIES}
++    )
++    add_test(NAME gsl_suppress_tests COMMAND gsl_suppress_tests)
++    set_target_properties(gsl_suppress_tests PROPERTIES FOLDER "tests")
++endif()
