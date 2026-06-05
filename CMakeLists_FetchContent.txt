@@ -1,0 +1,24 @@
+cmake_minimum_required(VERSION 3.14)
+project(safe_app LANGUAGES CXX)
+
+include(FetchContent)
+
+# 锁定 GSL 版本为 v4.2.0
+FetchContent_Declare(
+    Microsoft.GSL
+    GIT_REPOSITORY  https://github.com/microsoft/GSL.git
+    GIT_TAG         v4.2.0
+    GIT_SHALLOW     TRUE
+)
+
+# 配置 GSL 选项：仅构建库本身，不安装、不跑测试
+set(GSL_TEST    OFF CACHE BOOL "" FORCE)
+set(GSL_INSTALL OFF CACHE BOOL "" FORCE)
+
+FetchContent_MakeAvailable(Microsoft.GSL)
+
+add_executable(safe_app main.cpp)
+
+target_link_libraries(safe_app PRIVATE Microsoft.GSL::GSL)
+
+target_compile_features(safe_app PRIVATE cxx_std_17)
