@@ -1,0 +1,154 @@
+///////////////////////////////////////////////////////////////////////////////
+//
+// Copyright (c) 2015 Microsoft Corporation. All rights reserved.
+//
+// This code is licensed under the MIT License (MIT).
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+// THE SOFTWARE.
+//
+///////////////////////////////////////////////////////////////////////////////
+
+#include <gtest/gtest.h>
+
+#include <gsl/assert>
+#include <gsl/span>
+#include <gsl/util>
+
+#include <array>
+#include <cstddef>
+#include <vector>
+
+using namespace gsl;
+
+namespace
+{
+
+GSL_SUPPRESS(26481)
+int* get_element_ptr_arithmetic(int* arr, std::size_t idx)
+{
+    return arr + idx;
+}
+
+GSL_SUPPRESS(26481)
+int* get_element_ptr_subscript(int* arr, std::size_t idx)
+{
+    return &arr[idx];
+}
+
+GSL_SUPPRESS(26481)
+int* copy_ptr_arithmetic(const int* src, int* dst, std::size_t count)
+{
+    int* p = dst;
+    for (std::size_t i = 0; i < count; ++i)
+    {
+        *p++ = *src++;
+    }
+    return dst;
+}
+
+GSL_SUPPRESS(26481)
+int* copy_ptr_arithmetic_block(const int* src, int* dst, std::size_t count)
+{
+    {
+        int* p = dst;
+        const int* s = src;
+        for (std::size_t i = 0; i < count; ++i)
+        {
+            *p++ = *s++;
+        }
+    }
+    return dst;
+}
+
+int* copy_span(const int* src, int* dst, std::size_t count)
+{
+    const span<const int> src_span{src, count};
+    const span<int> dst_span{dst, count};
+    gsl::copy(src_span, dst_span);
+    return dst;
+}
+
+GSL_SUPPRESS(26481)
+int* get_element_array_pointer(int (&arr)[10], std::size_t idx)
+{
+    return arr + idx;
+}
+
+GSL_SUPPRESS(26481)
+int* vec_data_pointer_arithmetic(std::vector<int>& vec, std::size_t offset)
+{
+    return vec.data() + offset;
+}
+
+} // namespace
+
+TEST(gsl_suppress_test, pointer_arithmetic_suppressed)
+{
+    int arr[10] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9};
+
+    int* p = get_element_ptr_arithmetic(arr, 3);
+    EXPECT_EQ(*p, 3);
+
+    int* q = get_element_ptr_subscript(arr, 5);
+    EXPECT_EQ(*q, 5);
+}
+
+TEST(gsl_suppress_test, pointer_copy_suppressed)
+{
+    const int src[5] = {1, 2, 3, 4, 5};
+    int dst[5] = {0, 0, 0, 0, 0};
+
+    copy_ptr_arithmetic(src, dst, 5);
+    for (int i = 0; i < 5; ++i)
+    {
+        EXPECT_EQ(dst[i], src[i]);
+    }
+}
+
+TEST(gsl_suppress_test, span_copy_equivalent)
+{
+    const int src[5] = {1, 2, 3, 4, 5};
+    int dst_ptr[5] = {0, 0, 0, 0, 0};
+    int dst_span[5] = {0, 0, 0, 0, 0};
+
+    copy_ptr_arithmetic_block(src, dst_ptr, 5);
+    copy_span(src, dst_span, 5);
+
+    for (int i = 0; i < 5; ++i)
+    {
+        EXPECT_EQ(dst_ptr[i], dst_span[i]);
+    }
+}
+
+TEST(gsl_suppress_test, array_pointer_arithmetic_suppressed)
+{
+    int arr[10] = {10, 20, 30, 40, 50, 60, 70, 80, 90, 100};
+
+    int* p = get_element_array_pointer(arr, 7);
+    EXPECT_EQ(*p, 80);
+}
+
+TEST(gsl_suppress_test, vector_data_pointer_arithmetic_suppressed)
+{
+    std::vector<int> vec = {100, 200, 300, 400, 500};
+
+    int* p = vec_data_pointer_arithmetic(vec, 2);
+    EXPECT_EQ(*p, 300);
+}
+
+TEST(gsl_suppress_test, suppress_macro_expands_to_valid_attribute)
+{
+    constexpr const char* suppress_tag = "26481";
+
+    const span<const int> s{};
+    EXPECT_TRUE(s.empty());
+    EXPECT_TRUE(s.data() == nullptr);
+
+    SUCCEED() << "GSL_SUPPRESS(26481) macro expanded correctly and compiled without errors.";
+}
