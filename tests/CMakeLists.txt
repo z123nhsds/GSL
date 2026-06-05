@@ -216,6 +216,17 @@ foreach(src IN LISTS GSL_TEST_SOURCES)
   set_target_properties(${test_name} PROPERTIES FOLDER "tests")
 endforeach()
 
+if (TARGET suppress_tests AND GSL_SUPPRESS_STRICT_MODE)
+    if (MSVC)
+        target_compile_options(suppress_tests PRIVATE /WX-)
+    else()
+        target_compile_options(suppress_tests PRIVATE -Wno-error)
+        if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
+            target_compile_options(suppress_tests PRIVATE -Wunknown-attributes)
+        endif()
+    endif()
+endif()
+
 # No exception tests
 
 foreach(flag_var

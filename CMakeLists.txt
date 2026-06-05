@@ -10,9 +10,15 @@ string(COMPARE EQUAL ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR} PROJECT_IS_
 
 option(GSL_INSTALL "Generate and install GSL target" ${PROJECT_IS_TOP_LEVEL})
 option(GSL_TEST "Build and perform GSL tests" ${PROJECT_IS_TOP_LEVEL})
-
+option(GSL_SUPPRESS_STRICT_MODE "Emit compiler diagnostics for strict GSL_SUPPRESS validation" OFF)
 # The implementation generally assumes a platform that implements C++14 support
 target_compile_features(GSL INTERFACE "cxx_std_14")
+
+if (GSL_SUPPRESS_STRICT_MODE)
+    target_compile_definitions(GSL INTERFACE GSL_SUPPRESS_STRICT_MODE=1)
+else()
+    target_compile_definitions(GSL INTERFACE GSL_SUPPRESS_STRICT_MODE=0)
+endif()
 
 # Setup include directory
 add_subdirectory(include)
@@ -39,10 +45,7 @@ if (GSL_INSTALL)
     export(TARGETS GSL NAMESPACE ${namespace} FILE ${export_name}.cmake)
 
     set(gls_config_version "${CMAKE_CURRENT_BINARY_DIR}/Microsoft.GSLConfigVersion.cmake")
-
-    write_basic_package_version_file(${gls_config_version} COMPATIBILITY SameMajorVersion ARCH_INDEPENDENT)
-
-    install(FILES ${gls_config_version} DESTINATION ${cmake_files_install_dir})
-
-    install(FILES GSL.natvis DESTINATION ${cmake_files_install_dir})
+    write_basic_package_version_file(${gls_config_version} COMPATIBILITY SameMajorVersion)
+    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/Microsoft.GSLConfig.cmake" ${gls_config_version}
+            DESTINATION ${cmake_files_install_dir})
 endif()

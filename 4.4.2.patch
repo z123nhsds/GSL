@@ -1,0 +1,110 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index b306dc1..dd80775 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -10,10 +10,16 @@ string(COMPARE EQUAL ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR} PROJECT_IS_
+ 
+ option(GSL_INSTALL "Generate and install GSL target" ${PROJECT_IS_TOP_LEVEL})
+ option(GSL_TEST "Build and perform GSL tests" ${PROJECT_IS_TOP_LEVEL})
+-
++option(GSL_SUPPRESS_STRICT_MODE "Emit compiler diagnostics for strict GSL_SUPPRESS validation" OFF)
+ # The implementation generally assumes a platform that implements C++14 support
+ target_compile_features(GSL INTERFACE "cxx_std_14")
+ 
++if (GSL_SUPPRESS_STRICT_MODE)
++    target_compile_definitions(GSL INTERFACE GSL_SUPPRESS_STRICT_MODE=1)
++else()
++    target_compile_definitions(GSL INTERFACE GSL_SUPPRESS_STRICT_MODE=0)
++endif()
++
+ # Setup include directory
+ add_subdirectory(include)
+ 
+@@ -39,10 +45,7 @@ if (GSL_INSTALL)
+     export(TARGETS GSL NAMESPACE ${namespace} FILE ${export_name}.cmake)
+ 
+     set(gls_config_version "${CMAKE_CURRENT_BINARY_DIR}/Microsoft.GSLConfigVersion.cmake")
+-
+-    write_basic_package_version_file(${gls_config_version} COMPATIBILITY SameMajorVersion ARCH_INDEPENDENT)
+-
+-    install(FILES ${gls_config_version} DESTINATION ${cmake_files_install_dir})
+-
+-    install(FILES GSL.natvis DESTINATION ${cmake_files_install_dir})
++    write_basic_package_version_file(${gls_config_version} COMPATIBILITY SameMajorVersion)
++    install(FILES "${CMAKE_CURRENT_BINARY_DIR}/Microsoft.GSLConfig.cmake" ${gls_config_version}
++            DESTINATION ${cmake_files_install_dir})
+ endif()
+diff --git a/include/gsl/assert b/include/gsl/assert
+index a08424c..a27e6fe 100644
+--- a/include/gsl/assert
++++ b/include/gsl/assert
+@@ -41,27 +41,34 @@
+ #endif // defined(_MSC_VER) && (defined(_KERNEL_MODE) || (defined(_HAS_EXCEPTIONS) &&
+        // !_HAS_EXCEPTIONS))
+ 
+-//
+-// make suppress attributes parse for some compilers
+-// Hopefully temporary until suppression standardization occurs
+-//
++#ifndef GSL_SUPPRESS_STRICT_MODE
++#define GSL_SUPPRESS_STRICT_MODE 0
++#endif
++
+ #if defined(__clang__)
+-#define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
+-#elif defined(_MSC_VER) && _MSC_VER >= 1950
+-// Visual Studio versions after 2022 (_MSC_VER > 1944) support the justification message.
+-#define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
++#define GSL_SUPPRESS_USES_STRING_LITERAL 1
++#define GSL_SUPPRESS_IS_SUPPORTED 1
++#define GSL_SUPPRESS_IMPL(x) [[gsl::suppress(#x)]]
++#elif defined(_MSC_VER) && !defined(__INTEL_COMPILER) && !defined(__NVCC__) && (_MSC_VER >= 1950)
++#define GSL_SUPPRESS_USES_STRING_LITERAL 1
++#define GSL_SUPPRESS_IS_SUPPORTED 1
++#define GSL_SUPPRESS_IMPL(x) [[gsl::suppress(#x)]]
+ #elif defined(_MSC_VER) && !defined(__INTEL_COMPILER) && !defined(__NVCC__)
+-#define GSL_SUPPRESS(x) [[gsl::suppress(x)]]
++#define GSL_SUPPRESS_USES_STRING_LITERAL 0
++#define GSL_SUPPRESS_IS_SUPPORTED 1
++#define GSL_SUPPRESS_IMPL(x) [[gsl::suppress(x)]]
+ #else
+-#define GSL_SUPPRESS(x)
+-#endif // defined(__clang__)
++#define GSL_SUPPRESS_USES_STRING_LITERAL 1
++#define GSL_SUPPRESS_IS_SUPPORTED 0
++#define GSL_SUPPRESS_IMPL(x)
++#endif
++
++#define GSL_SUPPRESS(x) GSL_SUPPRESS_IMPL(x)
+ 
+ #if defined(__clang__) || defined(__GNUC__)
+ #define GSL_LIKELY(x) __builtin_expect(!!(x), 1)
+ #define GSL_UNLIKELY(x) __builtin_expect(!!(x), 0)
+-
+ #else
+-
+ #define GSL_LIKELY(x) (!!(x))
+ #define GSL_UNLIKELY(x) (!!(x))
+ #endif // defined(__clang__) || defined(__GNUC__)
+diff --git a/tests/CMakeLists.txt b/tests/CMakeLists.txt
+index d583c24..cad19c3 100644
+--- a/tests/CMakeLists.txt
++++ b/tests/CMakeLists.txt
+@@ -216,6 +216,17 @@ foreach(src IN LISTS GSL_TEST_SOURCES)
+   set_target_properties(${test_name} PROPERTIES FOLDER "tests")
+ endforeach()
+ 
++if (TARGET suppress_tests AND GSL_SUPPRESS_STRICT_MODE)
++    if (MSVC)
++        target_compile_options(suppress_tests PRIVATE /WX-)
++    else()
++        target_compile_options(suppress_tests PRIVATE -Wno-error)
++        if (CMAKE_CXX_COMPILER_ID MATCHES "Clang|AppleClang")
++            target_compile_options(suppress_tests PRIVATE -Wunknown-attributes)
++        endif()
++    endif()
++endif()
++
+ # No exception tests
+ 
+ foreach(flag_var
