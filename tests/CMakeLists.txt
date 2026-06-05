@@ -216,17 +216,6 @@ foreach(src IN LISTS GSL_TEST_SOURCES)
   set_target_properties(${test_name} PROPERTIES FOLDER "tests")
 endforeach()
 
-# No exception tests
-
-foreach(flag_var
-        CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
-        CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
-    STRING (REGEX REPLACE "/EHsc" "" ${flag_var} "${${flag_var}}")
-endforeach(flag_var)
-
-# this interface adds compile options to how the tests are run
-# please try to keep entries ordered =)
-add_library(gsl_tests_config_noexcept INTERFACE)
 if(MSVC) # MSVC or simulating MSVC
     target_compile_definitions(gsl_tests_config_noexcept INTERFACE
         _HAS_EXCEPTIONS=0 # disable exceptions in the Microsoft STL

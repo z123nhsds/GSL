@@ -1,0 +1,86 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index b306dc1..df52c0e 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -10,16 +10,9 @@ string(COMPARE EQUAL ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR} PROJECT_IS_
+ 
+ option(GSL_INSTALL "Generate and install GSL target" ${PROJECT_IS_TOP_LEVEL})
+ option(GSL_TEST "Build and perform GSL tests" ${PROJECT_IS_TOP_LEVEL})
+-
+ # The implementation generally assumes a platform that implements C++14 support
+ target_compile_features(GSL INTERFACE "cxx_std_14")
+ 
+-# Setup include directory
+-add_subdirectory(include)
+-
+-target_sources(GSL INTERFACE $<BUILD_INTERFACE:${GSL_SOURCE_DIR}/GSL.natvis>)
+-
+-if (GSL_TEST)
+     enable_testing()
+     add_subdirectory(tests)
+ endif()
+diff --git a/include/gsl/assert b/include/gsl/assert
+index a08424c..92b0f3e 100644
+--- a/include/gsl/assert
++++ b/include/gsl/assert
+@@ -45,34 +45,16 @@
+ // make suppress attributes parse for some compilers
+ // Hopefully temporary until suppression standardization occurs
+ //
+-#if defined(__clang__)
++#define GSL_SUPPRESS(x) [[gsl::suppress(x)]]
+ #define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
+-#elif defined(_MSC_VER) && _MSC_VER >= 1950
++#endif // defined(__clang__)
+ // Visual Studio versions after 2022 (_MSC_VER > 1944) support the justification message.
+ #define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
+-#elif defined(_MSC_VER) && !defined(__INTEL_COMPILER) && !defined(__NVCC__)
+-#define GSL_SUPPRESS(x) [[gsl::suppress(x)]]
+-#else
+-#define GSL_SUPPRESS(x)
+-#endif // defined(__clang__)
+-
+-#if defined(__clang__) || defined(__GNUC__)
+-#define GSL_LIKELY(x) __builtin_expect(!!(x), 1)
+-#define GSL_UNLIKELY(x) __builtin_expect(!!(x), 0)
+-
+-#else
+-
+-#define GSL_LIKELY(x) (!!(x))
+-#define GSL_UNLIKELY(x) (!!(x))
+-#endif // defined(__clang__) || defined(__GNUC__)
+-
+ //
+-// GSL_ASSUME(cond)
++
+ //
++
+ // Tell the optimizer that the predicate cond must hold. It is unspecified
+-// whether or not cond is actually evaluated.
+-//
+-#ifdef _MSC_VER
+ #define GSL_ASSUME(cond) __assume(cond)
+ #elif defined(__GNUC__)
+ #define GSL_ASSUME(cond) ((cond) ? static_cast<void>(0) : __builtin_unreachable())
+diff --git a/tests/CMakeLists.txt b/tests/CMakeLists.txt
+index d583c24..b3e96a1 100644
+--- a/tests/CMakeLists.txt
++++ b/tests/CMakeLists.txt
+@@ -216,17 +216,6 @@ foreach(src IN LISTS GSL_TEST_SOURCES)
+   set_target_properties(${test_name} PROPERTIES FOLDER "tests")
+ endforeach()
+ 
+-# No exception tests
+-
+-foreach(flag_var
+-        CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
+-        CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
+-    STRING (REGEX REPLACE "/EHsc" "" ${flag_var} "${${flag_var}}")
+-endforeach(flag_var)
+-
+-# this interface adds compile options to how the tests are run
+-# please try to keep entries ordered =)
+-add_library(gsl_tests_config_noexcept INTERFACE)
+ if(MSVC) # MSVC or simulating MSVC
+     target_compile_definitions(gsl_tests_config_noexcept INTERFACE
+         _HAS_EXCEPTIONS=0 # disable exceptions in the Microsoft STL
