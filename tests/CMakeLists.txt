@@ -203,6 +203,7 @@ target_include_directories(gsl_tests_config SYSTEM INTERFACE
 # no_exception_ensure_tests.cpp is built separately with exceptions disabled
 file(GLOB GSL_TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.cpp")
 list(FILTER GSL_TEST_SOURCES EXCLUDE REGEX "no_exception_ensure_tests\\.cpp$")
+list(FILTER GSL_TEST_SOURCES EXCLUDE REGEX "suppress_warning_tests\\.cpp$")
 
 foreach(src IN LISTS GSL_TEST_SOURCES)
   get_filename_component(test_name "${src}" NAME_WE)
@@ -215,6 +216,20 @@ foreach(src IN LISTS GSL_TEST_SOURCES)
   add_test(NAME ${test_name} COMMAND ${test_name})
   set_target_properties(${test_name} PROPERTIES FOLDER "tests")
 endforeach()
+
+if(MSVC)
+    add_executable(suppress_warning_tests suppress_warning_tests.cpp)
+    target_link_libraries(suppress_warning_tests Microsoft.GSL::GSL)
+    target_compile_options(suppress_warning_tests PRIVATE
+        ${GSL_CPLUSPLUS_OPT}
+        /EHsc
+        /W4
+        /analyze
+        /we26481
+    )
+    add_test(NAME suppress_warning_tests COMMAND suppress_warning_tests)
+    set_target_properties(suppress_warning_tests PROPERTIES FOLDER "tests")
+endif()
 
 # No exception tests
 
