@@ -1,0 +1,293 @@
+diff --git a/4.1.1.patch b/4.1.1.patch
+new file mode 100644
+index 0000000..e69de29
+diff --git a/CMakeLists_FetchContent.txt b/CMakeLists_FetchContent.txt
+new file mode 100644
+index 0000000..80d6afa
+--- /dev/null
++++ b/CMakeLists_FetchContent.txt
+@@ -0,0 +1,24 @@
++cmake_minimum_required(VERSION 3.14)
++project(safe_app LANGUAGES CXX)
++
++include(FetchContent)
++
++# 锁定 GSL 版本为 v4.2.0
++FetchContent_Declare(
++    Microsoft.GSL
++    GIT_REPOSITORY  https://github.com/microsoft/GSL.git
++    GIT_TAG         v4.2.0
++    GIT_SHALLOW     TRUE
++)
++
++# 配置 GSL 选项：仅构建库本身，不安装、不跑测试
++set(GSL_TEST    OFF CACHE BOOL "" FORCE)
++set(GSL_INSTALL OFF CACHE BOOL "" FORCE)
++
++FetchContent_MakeAvailable(Microsoft.GSL)
++
++add_executable(safe_app main.cpp)
++
++target_link_libraries(safe_app PRIVATE Microsoft.GSL::GSL)
++
++target_compile_features(safe_app PRIVATE cxx_std_17)
+\ No newline at end of file
+diff --git a/gsl_finally_raii.h b/gsl_finally_raii.h
+new file mode 100644
+index 0000000..be32d2f
+--- /dev/null
++++ b/gsl_finally_raii.h
+@@ -0,0 +1,59 @@
++#ifndef GSL_FINALLY_RAII_H
++#define GSL_FINALLY_RAII_H
++
++#include <gsl/util>
++#include <exception>
++#include <type_traits>
++#include <utility>
++
++namespace gsl {
++
++template <class F>
++class final_action_safe
++{
++public:
++    static_assert(std::is_nothrow_move_constructible_v<F> || std::is_copy_constructible_v<F>,
++        "The callable must be nothrow move constructible or copy constructible");
++
++    explicit final_action_safe(const F& ff) noexcept(std::is_nothrow_copy_constructible_v<F>)
++        : f{ff} { }
++    explicit final_action_safe(F&& ff) noexcept(std::is_nothrow_move_constructible_v<F>)
++        : f{std::move(ff)} { }
++
++    ~final_action_safe() noexcept
++    {
++        if (!invoke) return;
++#if defined(__cpp_exceptions)
++        try {
++            f();
++        } catch (...) {
++        }
++#else
++        f();
++#endif
++    }
++
++    final_action_safe(final_action_safe&& other) noexcept
++        : f(std::move(other.f)), invoke(std::exchange(other.invoke, false))
++    { }
++
++    final_action_safe(const final_action_safe&)   = delete;
++    void operator=(const final_action_safe&) = delete;
++    void operator=(final_action_safe&&)      = delete;
++
++    void dismiss() noexcept { invoke = false; }
++
++private:
++    F f;
++    bool invoke = true;
++};
++
++template <class F>
++GSL_NODISCARD auto finally_safe(F&& f) noexcept
++{
++    return final_action_safe<std::decay_t<F>>{std::forward<F>(f)};
++}
++
++} // namespace gsl
++
++#endif // GSL_FINALLY_RAII_H
+\ No newline at end of file
+diff --git a/main.cpp b/main.cpp
+new file mode 100644
+index 0000000..d5dc98e
+--- /dev/null
++++ b/main.cpp
+@@ -0,0 +1,22 @@
++#include <gsl/gsl>
++#include <iostream>
++#include <string>
++#include <vector>
++
++int main()
++{
++    std::vector<int> data = {10, 20, 30, 40, 50};
++
++    gsl::span<int> sp{data};
++    int sum = 0;
++    for (auto v : sp) sum += v;
++
++    std::cout << "Sum: " << sum << "\n";
++
++    {
++        auto _ = gsl::finally([] { std::cout << "Cleanup via finally\n"; });
++        std::cout << "Doing work...\n";
++    }
++
++    return 0;
++}
+\ No newline at end of file
+diff --git a/tests/finally_raii_tests.cpp b/tests/finally_raii_tests.cpp
+new file mode 100644
+index 0000000..c39bd67
+--- /dev/null
++++ b/tests/finally_raii_tests.cpp
+@@ -0,0 +1,157 @@
++#include <gtest/gtest.h>
++#include <gsl/util>
++#include <stdexcept>
++#include <string>
++#include <vector>
++
++#include "gsl_finally_raii.h"
++
++using namespace gsl;
++
++TEST(finally_raii, basic_cleanup_on_scope_exit)
++{
++    int counter = 0;
++    {
++        auto _ = finally_safe([&] { ++counter; });
++        EXPECT_EQ(counter, 0);
++    }
++    EXPECT_EQ(counter, 1);
++}
++
++TEST(finally_raii, move_semantics_transfer_ownership)
++{
++    int counter = 0;
++    {
++        auto guard_1 = finally_safe([&] { ++counter; });
++        {
++            auto guard_2 = std::move(guard_1);
++            EXPECT_EQ(counter, 0);
++        }
++        EXPECT_EQ(counter, 1);
++        {
++            auto guard_3 = std::move(guard_1);
++            EXPECT_EQ(counter, 1);
++        }
++        EXPECT_EQ(counter, 1);
++    }
++    EXPECT_EQ(counter, 1);
++}
++
++TEST(finally_raii, dismiss_prevents_cleanup)
++{
++    int counter = 0;
++    {
++        auto guard = finally_safe([&] { ++counter; });
++        guard.dismiss();
++    }
++    EXPECT_EQ(counter, 0);
++}
++
++TEST(finally_raii, cleanup_runs_during_exception_unwinding)
++{
++    std::vector<int> log;
++
++    try {
++        auto _ = finally_safe([&] { log.push_back(1); });
++        log.push_back(0);
++        throw std::runtime_error("test exception");
++    } catch (const std::runtime_error&) {
++        log.push_back(2);
++    }
++
++    ASSERT_EQ(log.size(), 3);
++    EXPECT_EQ(log[0], 0);
++    EXPECT_EQ(log[1], 1);
++    EXPECT_EQ(log[2], 2);
++}
++
++TEST(finally_raii, cleanup_function_throws_no_terminate)
++{
++    int counter = 0;
++    {
++        auto _ = finally_safe([&] {
++            ++counter;
++            throw std::runtime_error("cleanup failed");
++        });
++    }
++    EXPECT_EQ(counter, 1);
++}
++
++TEST(finally_raii, cleanup_throws_during_stack_unwinding)
++{
++    int counter = 0;
++
++    try {
++        auto _ = finally_safe([&] {
++            ++counter;
++            throw std::runtime_error("cleanup throws");
++        });
++        throw std::runtime_error("primary exception");
++    } catch (const std::runtime_error& e) {
++        EXPECT_EQ(std::string(e.what()), "primary exception");
++    }
++
++    EXPECT_EQ(counter, 1);
++}
++
++TEST(finally_raii, nested_exception_with_cleanup)
++{
++    int outer = 0;
++    int inner = 0;
++
++    try {
++        auto _outer = finally_safe([&] { outer = 42; });
++
++        try {
++            auto _inner = finally_safe([&] { inner = 42; });
++            throw std::runtime_error("inner");
++        } catch (const std::runtime_error&) {
++            EXPECT_EQ(inner, 42);
++        }
++
++        throw std::runtime_error("outer");
++    } catch (const std::runtime_error&) {
++        EXPECT_EQ(outer, 42);
++    }
++}
++
++TEST(finally_raii, multiple_cleanup_guards_reverse_order)
++{
++    std::vector<int> order;
++
++    {
++        auto g1 = finally_safe([&] { order.push_back(1); });
++        auto g2 = finally_safe([&] { order.push_back(2); });
++        auto g3 = finally_safe([&] { order.push_back(3); });
++    }
++
++    ASSERT_EQ(order.size(), 3);
++    EXPECT_EQ(order[0], 3);
++    EXPECT_EQ(order[1], 2);
++    EXPECT_EQ(order[2], 1);
++}
++
++TEST(finally_raii, function_pointer)
++{
++    int counter = 0;
++    auto inc = [&] { ++counter; };
++
++    {
++        auto _ = finally_safe(+inc);
++    }
++    EXPECT_EQ(counter, 1);
++}
++
++TEST(finally_raii, comparable_to_std_final_action)
++{
++    int a = 0;
++    int b = 0;
++
++    {
++        auto _safe = finally_safe([&] { a = 1; });
++        auto _std  = finally([&] { b = 1; });
++    }
++
++    EXPECT_EQ(a, 1);
++    EXPECT_EQ(b, 1);
++}
+\ No newline at end of file
