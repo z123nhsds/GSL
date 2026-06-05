@@ -1,0 +1,93 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index b306dc1..2254190 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -10,6 +10,7 @@ string(COMPARE EQUAL ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR} PROJECT_IS_
+ 
+ option(GSL_INSTALL "Generate and install GSL target" ${PROJECT_IS_TOP_LEVEL})
+ option(GSL_TEST "Build and perform GSL tests" ${PROJECT_IS_TOP_LEVEL})
++option(GSL_SUPPRESS_STRICT_MODE "Enable warnings for unused GSL_SUPPRESS annotations" OFF)
+ 
+ # The implementation generally assumes a platform that implements C++14 support
+ target_compile_features(GSL INTERFACE "cxx_std_14")
+@@ -17,6 +18,11 @@ target_compile_features(GSL INTERFACE "cxx_std_14")
+ # Setup include directory
+ add_subdirectory(include)
+ 
++# Apply GSL_SUPPRESS_STRICT_MODE compile definition if enabled
++if(GSL_SUPPRESS_STRICT_MODE)
++    target_compile_definitions(GSL INTERFACE GSL_SUPPRESS_STRICT_MODE=1)
++endif()
++
+ target_sources(GSL INTERFACE $<BUILD_INTERFACE:${GSL_SOURCE_DIR}/GSL.natvis>)
+ 
+ if (GSL_TEST)
+diff --git a/include/gsl/assert b/include/gsl/assert
+index a08424c..1205fd4 100644
+--- a/include/gsl/assert
++++ b/include/gsl/assert
+@@ -45,16 +45,57 @@
+ // make suppress attributes parse for some compilers
+ // Hopefully temporary until suppression standardization occurs
+ //
++
++// Detect if compiler supports gsl::suppress attribute
++#if defined(__has_cpp_attribute)
++#if __has_cpp_attribute(gsl::suppress)
++#define GSL_HAS_SUPPRESS_ATTRIBUTE 1
++#endif
++#endif
++
++#ifndef GSL_HAS_SUPPRESS_ATTRIBUTE
++#define GSL_HAS_SUPPRESS_ATTRIBUTE 0
++#endif
++
++// Detect if compiler supports quoted suppress format: [[gsl::suppress("tag")]]
++// MSVC 1950+ (VS 2022 17.4+) and Clang support the quoted format correctly
++// Older MSVC versions only understand unquoted format: [[gsl::suppress(tag)]]
+ #if defined(__clang__)
+-#define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
++#define GSL_SUPPRESS_USE_QUOTES 1
+ #elif defined(_MSC_VER) && _MSC_VER >= 1950
+-// Visual Studio versions after 2022 (_MSC_VER > 1944) support the justification message.
+-#define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
+-#elif defined(_MSC_VER) && !defined(__INTEL_COMPILER) && !defined(__NVCC__)
+-#define GSL_SUPPRESS(x) [[gsl::suppress(x)]]
++#define GSL_SUPPRESS_USE_QUOTES 1
+ #else
+-#define GSL_SUPPRESS(x)
+-#endif // defined(__clang__)
++#define GSL_SUPPRESS_USE_QUOTES 0
++#endif
++
++// Internal implementation macro
++#if GSL_SUPPRESS_USE_QUOTES
++#define GSL_SUPPRESS_IMPL(x) [[gsl::suppress(#x)]]
++#elif GSL_HAS_SUPPRESS_ATTRIBUTE
++#define GSL_SUPPRESS_IMPL(x) [[gsl::suppress(x)]]
++#else
++#define GSL_SUPPRESS_IMPL(x)
++#endif
++
++// Main macro - supports both GSL_SUPPRESS(tag) and GSL_SUPPRESS("tag")
++// When called as GSL_SUPPRESS(bounds.1), #x stringifies to "bounds.1"
++// When called as GSL_SUPPRESS("bounds.1"), passes through as-is for compilers that support it
++#if GSL_HAS_SUPPRESS_ATTRIBUTE
++#define GSL_SUPPRESS(...) GSL_SUPPRESS_IMPL(__VA_ARGS__)
++#else
++#define GSL_SUPPRESS(...)
++#endif
++
++// Strict mode: warn on unused suppressions
++#if defined(GSL_SUPPRESS_STRICT_MODE) && GSL_SUPPRESS_STRICT_MODE
++#if defined(__clang__)
++#define GSL_SUPPRESS_STRICT_ANNOTATION [[gsl::suppress(__VA_ARGS__), clang::warn_unused]]
++#elif defined(__GNUC__) && __GNUC__ >= 5
++#define GSL_SUPPRESS_STRICT_ANNOTATION [[gsl::suppress(__VA_ARGS__)]] __attribute__((unused))
++#else
++#define GSL_SUPPRESS_STRICT_ANNOTATION GSL_SUPPRESS(__VA_ARGS__)
++#endif
++#endif
+ 
+ #if defined(__clang__) || defined(__GNUC__)
+ #define GSL_LIKELY(x) __builtin_expect(!!(x), 1)
