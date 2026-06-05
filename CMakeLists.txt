@@ -13,7 +13,7 @@ option(GSL_TEST "Build and perform GSL tests" ${PROJECT_IS_TOP_LEVEL})
 
 # The implementation generally assumes a platform that implements C++14 support
 target_compile_features(GSL INTERFACE "cxx_std_14")
-
+# Setup include directory
 # Setup include directory
 add_subdirectory(include)
 
@@ -32,6 +32,21 @@ if (GSL_INSTALL)
 
     set(export_name "Microsoft.GSLConfig")
     set(namespace "Microsoft.GSL::")
+    set(cmake_files_install_dir ${CMAKE_INSTALL_DATADIR}/cmake/Microsoft.GSL)
+
+    install(TARGETS GSL EXPORT ${export_name} INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+    install(EXPORT ${export_name} NAMESPACE ${namespace} DESTINATION ${cmake_files_install_dir})
+    export(TARGETS GSL NAMESPACE ${namespace} FILE ${export_name}.cmake)
+
+    set(gls_config_version "${CMAKE_CURRENT_BINARY_DIR}/Microsoft.GSLConfigVersion.cmake")
+
+    write_basic_package_version_file(${gls_config_version} COMPATIBILITY SameMajorVersion ARCH_INDEPENDENT)
+
+    install(FILES ${gls_config_version} DESTINATION ${cmake_files_install_dir})
+
+    install(FILES GSL.natvis DESTINATION ${cmake_files_install_dir})
+endif()
+
     set(cmake_files_install_dir ${CMAKE_INSTALL_DATADIR}/cmake/Microsoft.GSL)
 
     install(TARGETS GSL EXPORT ${export_name} INCLUDES DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
