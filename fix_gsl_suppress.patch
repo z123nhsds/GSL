@@ -1,305 +1,229 @@
+From: GSL Fix <gsl-fix@example.com>
+Subject: [PATCH] Remove space in GSL_SUPPRESS: add WhitespaceSensitiveMacros and remove clang-format guards
+
+clang-format was inserting spaces in GSL_SUPPRESS arguments, e.g.
+GSL_SUPPRESS(r.11) -> GSL_SUPPRESS(r .11), which breaks the
+[[gsl::suppress("r.11")]] attribute matching after macro expansion.
+
+Fix by:
+1. Adding WhitespaceSensitiveMacros: ['GSL_SUPPRESS'] to .clang-format
+2. Removing all // clang-format off/on guards around GSL_SUPPRESS usages
+
+---
+ .clang-format                        | 2 ++
+ include/gsl/algorithm                | 2 --
+ include/gsl/assert                   | 2 --
+ include/gsl/narrow                   | 4 ----
+ include/gsl/span                     | 26 --------------------------
+ include/gsl/util                     | 6 ------
+ tests/notnull_tests.cpp              | 16 ----------------
+ tests/strict_notnull_tests.cpp       | 8 --------
+ 8 files changed, 2 insertions(+), 66 deletions(-)
+
+diff --git a/.clang-format b/.clang-format
+--- a/.clang-format
++++ b/.clang-format
+@@ -33,3 +33,5 @@
+ SpaceAfterCStyleCast: true
+ CommentPragmas: '^ NO-FORMAT:'
++
++WhitespaceSensitiveMacros: ['GSL_SUPPRESS']
 diff --git a/include/gsl/algorithm b/include/gsl/algorithm
-index c67f35a..a33bf63 100644
 --- a/include/gsl/algorithm
 +++ b/include/gsl/algorithm
-@@ -48,9 +48,7 @@ void copy(span<SrcElementType, SrcExtent> src, span<DestElementType, DestExtent>
-                   "Source range is longer than target range");
- 
+@@ -49,5 +49,3 @@
+
      Expects(dest.size() >= src.size());
 -    // clang-format off
      GSL_SUPPRESS(stl.1) // NO-FORMAT: attribute
 -    // clang-format on
      std::copy_n(src.data(), src.size(), dest.data());
- }
- 
 diff --git a/include/gsl/assert b/include/gsl/assert
-index a08424c..0cf9062 100644
 --- a/include/gsl/assert
 +++ b/include/gsl/assert
-@@ -93,9 +93,7 @@ namespace details
- 
+@@ -94,5 +94,3 @@
      typedef void(__cdecl* terminate_handler)();
- 
+
 -    // clang-format off
      GSL_SUPPRESS(f.6) // NO-FORMAT: attribute
 -    // clang-format on
      [[noreturn]] inline void __cdecl default_terminate_handler()
-     {
-         __fastfail(RANGE_CHECKS_FAILURE);
 diff --git a/include/gsl/narrow b/include/gsl/narrow
-index bee29a1..872463c 100644
 --- a/include/gsl/narrow
 +++ b/include/gsl/narrow
-@@ -28,13 +28,11 @@ struct narrowing_error : public std::exception
- 
- // narrow() : a checked version of narrow_cast() that throws if the cast changed the value
+@@ -30,5 +30,4 @@
  template <class T, class U, typename std::enable_if<std::is_arithmetic<T>::value>::type* = nullptr>
 -// clang-format off
  GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
  GSL_SUPPRESS(es.46) // NO-FORMAT: attribute // The warning suggests that a floating->unsigned conversion can occur
-                                             // in the static_cast below, and that gsl::narrow should be used instead.
+@@ -35,5 +34,4 @@
                                              // Suppress this warning, since gsl::narrow is defined in terms of
                                              // static_cast
 -    // clang-format on
      constexpr T narrow(U u)
  {
-     constexpr const bool is_different_signedness =
-@@ -64,9 +62,7 @@ GSL_SUPPRESS(p.2) // NO-FORMAT: attribute // don't rely on undefined behavior
- }
- 
+@@ -65,5 +63,3 @@
+
  template <class T, class U, typename std::enable_if<!std::is_arithmetic<T>::value>::type* = nullptr>
 -// clang-format off
  GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
 -    // clang-format on
      constexpr T narrow(U u)
- {
-     const T t = narrow_cast<T>(u);
 diff --git a/include/gsl/span b/include/gsl/span
-index af351ca..c4a7ce6 100644
 --- a/include/gsl/span
 +++ b/include/gsl/span
-@@ -163,9 +163,7 @@ namespace details
-         constexpr span_iterator& operator++() noexcept
+@@ -164,5 +164,3 @@
          {
              Expects(current_ != end_);
 -            // clang-format off
              GSL_SUPPRESS(bounds.1) // NO-FORMAT: attribute
 -            // clang-format on
              ++current_;
-             return *this;
-         }
-@@ -196,9 +194,7 @@ namespace details
-             if (n != 0) Expects(begin_ && current_ && end_);
-             if (n > 0) Expects(end_ - current_ >= n);
+@@ -197,5 +195,3 @@
              if (n < 0) Expects(current_ - begin_ >= -n);
 -            // clang-format off
              GSL_SUPPRESS(bounds.1) // NO-FORMAT: attribute
 -            // clang-format on
              current_ += n;
-             return *this;
+@@ -315,5 +311,3 @@
          }
-@@ -315,9 +311,7 @@ namespace details
-             if (n < 0) Expects(current_ - begin_ >= -n);
-         }
- 
+
 -        // clang-format off
          GSL_SUPPRESS(bounds.1) // NO-FORMAT: attribute
 -        // clang-format on
          constexpr pointer _Unwrapped() const noexcept
-         { // after seeking *this to a high water mark, or using one of the
-             // _Verify_xxx functions above, unwrap this span_iterator to a raw
-@@ -332,9 +326,7 @@ namespace details
- #else
-         static constexpr bool _Unwrap_when_unverified = false;
+@@ -332,5 +326,3 @@
  #endif
 -        // clang-format off
          GSL_SUPPRESS(con.3) // NO-FORMAT: attribute // TODO: false positive
 -        // clang-format on
          constexpr void _Seek_to(const pointer p) noexcept
-         { // adjust the position of *this to previously verified location p
-             // after _Unwrapped
-@@ -589,9 +581,7 @@ public:
-     }
- 
+@@ -584,5 +576,3 @@
      template <std::size_t Count>
 -    // clang-format off
      GSL_SUPPRESS(bounds.1) // NO-FORMAT: attribute
 -        // clang-format on
          constexpr span<element_type, Count> last() const noexcept
-     {
-         static_assert(Extent == dynamic_extent || Count <= Extent,
-@@ -601,9 +591,7 @@ public:
-     }
- 
+@@ -596,5 +586,3 @@
      template <std::size_t Offset, std::size_t Count = dynamic_extent>
 -    // clang-format off
      GSL_SUPPRESS(bounds.1) // NO-FORMAT: attribute
 -        // clang-format on
          constexpr auto subspan() const noexcept ->
-         typename details::calculate_subspan_type<ElementType, Extent, Offset, Count>::type
-     {
-@@ -642,9 +630,7 @@ public:
-     constexpr bool empty() const noexcept { return size() == 0; }
- 
+@@ -633,5 +621,3 @@
      // [span.elem], span element access
 -    // clang-format off
      GSL_SUPPRESS(bounds.1) // NO-FORMAT: attribute
 -    // clang-format on
      constexpr reference operator[](size_type idx) const noexcept
-     {
-         Expects(idx < size());
-@@ -669,18 +655,14 @@ public:
-     constexpr iterator begin() const noexcept
-     {
+@@ -656,5 +642,3 @@
          const auto data = storage_.data();
 -        // clang-format off
          GSL_SUPPRESS(bounds.1) // NO-FORMAT: attribute
 -        // clang-format on
          return {data, data + size(), data};
-     }
- 
-     constexpr iterator end() const noexcept
-     {
+@@ -663,5 +647,3 @@
          const auto data = storage_.data();
 -        // clang-format off
          GSL_SUPPRESS(bounds.1) // NO-FORMAT: attribute
 -        // clang-format on
          const auto endData = data + storage_.size();
-         return {data, endData, endData};
-     }
-@@ -693,9 +675,7 @@ public:
-     constexpr pointer _Unchecked_begin() const noexcept { return data(); }
-     constexpr pointer _Unchecked_end() const noexcept
+@@ -676,5 +658,3 @@
      {
 -        // clang-format off
          GSL_SUPPRESS(bounds.1) // NO-FORMAT: attribute
 -        // clang-format on
          return data() + size();
+@@ -736,5 +716,3 @@
      }
- #endif // _MSC_VER
-@@ -752,9 +732,7 @@ private:
-         return tmp.subspan(offset, count);
-     }
- 
+
 -    // clang-format off
      GSL_SUPPRESS(bounds.1) // NO-FORMAT: attribute
 -    // clang-format on
      constexpr span<element_type, dynamic_extent>
-     make_subspan(size_type offset, size_type count, subspan_selector<dynamic_extent>) const noexcept
-     {
-@@ -829,9 +807,7 @@ as_bytes(span<ElementType, Extent> s) noexcept
- {
+@@ -811,5 +789,3 @@
      using type = span<const gsl::impl::byte, details::calculate_byte_size<ElementType, Extent>::value>;
- 
+
 -    // clang-format off
      GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
 -    // clang-format on
      return type{reinterpret_cast<const gsl::impl::byte*>(s.data()), s.size_bytes()};
- }
- 
-@@ -842,9 +818,7 @@ as_writable_bytes(span<ElementType, Extent> s) noexcept
- {
+@@ -822,5 +798,3 @@
      using type = span<gsl::impl::byte, details::calculate_byte_size<ElementType, Extent>::value>;
- 
+
 -    // clang-format off
      GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
 -    // clang-format on
      return type{reinterpret_cast<gsl::impl::byte*>(s.data()), s.size_bytes()};
- }
- 
 diff --git a/include/gsl/util b/include/gsl/util
-index 7a3caed..58c13bc 100644
 --- a/include/gsl/util
 +++ b/include/gsl/util
-@@ -127,9 +127,7 @@ GSL_NODISCARD auto finally(F&& f) noexcept
- 
- // narrow_cast(): a searchable way to do narrowing casts of values
+@@ -129,5 +129,3 @@
  template <class T, class U>
 -// clang-format off
  GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
 -    // clang-format on
      constexpr T narrow_cast(U&& u) noexcept
- {
-     return static_cast<T>(std::forward<U>(u));
-@@ -139,10 +137,8 @@ GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
- // at() - Bounds-checked way of accessing builtin arrays, std::array, std::vector
- //
+@@ -140,5 +138,3 @@
  template <class T, std::size_t N>
 -// clang-format off
  GSL_SUPPRESS(bounds.4) // NO-FORMAT: attribute
  GSL_SUPPRESS(bounds.2) // NO-FORMAT: attribute
 -    // clang-format on
      constexpr T& at(T (&arr)[N], const index i)
- {
-     static_assert(N <= static_cast<std::size_t>((std::numeric_limits<std::ptrdiff_t>::max)()), "We only support arrays up to PTRDIFF_MAX bytes.");
-@@ -151,10 +147,8 @@ GSL_SUPPRESS(bounds.2) // NO-FORMAT: attribute
- }
- 
+@@ -151,5 +147,3 @@
  template <class Cont>
 -// clang-format off
  GSL_SUPPRESS(bounds.4) // NO-FORMAT: attribute
  GSL_SUPPRESS(bounds.2) // NO-FORMAT: attribute
 -    // clang-format on
      constexpr auto at(Cont& cont, const index i) -> decltype(cont[cont.size()])
- {
-     Expects(i >= 0 && i < narrow_cast<index>(cont.size()));
-@@ -163,9 +157,7 @@ GSL_SUPPRESS(bounds.2) // NO-FORMAT: attribute
- }
- 
+@@ -162,5 +156,3 @@
  template <class T>
 -// clang-format off
  GSL_SUPPRESS(bounds.1) // NO-FORMAT: attribute
 -    // clang-format on
      constexpr T at(const std::initializer_list<T> cont, const index i)
- {
-     Expects(i >= 0 && i < narrow_cast<index>(cont.size()));
 diff --git a/tests/notnull_tests.cpp b/tests/notnull_tests.cpp
-index 8cb9f86..28be645 100644
 --- a/tests/notnull_tests.cpp
 +++ b/tests/notnull_tests.cpp
-@@ -69,9 +69,7 @@ struct CustomPtr
- template <typename T, typename U>
- std::string operator==(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
+@@ -71,5 +71,3 @@
  {
 -    // clang-format off
      GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
 -    // clang-format on
      return reinterpret_cast<const void*>(lhs.p_) == reinterpret_cast<const void*>(rhs.p_) ? "true"
-                                                                                           : "false";
- }
-@@ -79,9 +77,7 @@ std::string operator==(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
- template <typename T, typename U>
- std::string operator!=(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
+@@ -81,5 +79,3 @@
  {
 -    // clang-format off
      GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
 -    // clang-format on
      return reinterpret_cast<const void*>(lhs.p_) != reinterpret_cast<const void*>(rhs.p_) ? "true"
-                                                                                           : "false";
- }
-@@ -89,9 +85,7 @@ std::string operator!=(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
- template <typename T, typename U>
- std::string operator<(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
+@@ -91,5 +87,3 @@
  {
 -    // clang-format off
      GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
 -    // clang-format on
      return reinterpret_cast<const void*>(lhs.p_) < reinterpret_cast<const void*>(rhs.p_) ? "true"
-                                                                                          : "false";
- }
-@@ -99,9 +93,7 @@ std::string operator<(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
- template <typename T, typename U>
- std::string operator>(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
+@@ -101,5 +95,3 @@
  {
 -    // clang-format off
      GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
 -    // clang-format on
      return reinterpret_cast<const void*>(lhs.p_) > reinterpret_cast<const void*>(rhs.p_) ? "true"
-                                                                                          : "false";
- }
-@@ -109,9 +101,7 @@ std::string operator>(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
- template <typename T, typename U>
- std::string operator<=(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
+@@ -111,5 +103,3 @@
  {
 -    // clang-format off
      GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
 -    // clang-format on
      return reinterpret_cast<const void*>(lhs.p_) <= reinterpret_cast<const void*>(rhs.p_) ? "true"
-                                                                                           : "false";
- }
-@@ -119,9 +109,7 @@ std::string operator<=(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
- template <typename T, typename U>
- std::string operator>=(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
+@@ -121,5 +111,3 @@
  {
 -    // clang-format off
      GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
 -    // clang-format on
      return reinterpret_cast<const void*>(lhs.p_) >= reinterpret_cast<const void*>(rhs.p_) ? "true"
-                                                                                           : "false";
- }
-@@ -137,13 +125,9 @@ struct NonCopyableNonMovable
- 
- namespace
+@@ -128,9 +126,5 @@
  {
 -// clang-format off
  GSL_SUPPRESS(f.4) // NO-FORMAT: attribute
@@ -309,34 +233,27 @@ index 8cb9f86..28be645 100644
  GSL_SUPPRESS(f.4) // NO-FORMAT: attribute
 -// clang-format on
  bool helper_const(not_null<const int*> p) { return *p == 12; }
- 
- int* return_pointer() { return nullptr; }
 diff --git a/tests/strict_notnull_tests.cpp b/tests/strict_notnull_tests.cpp
-index 0626d8f..c778f61 100644
 --- a/tests/strict_notnull_tests.cpp
 +++ b/tests/strict_notnull_tests.cpp
-@@ -41,24 +41,16 @@ struct RefCounted
- 
- namespace
+@@ -43,17 +43,9 @@
  {
 -// clang-format off
  GSL_SUPPRESS(f.4) // NO-FORMAT: attribute
 -// clang-format on
  bool helper(not_null<int*> p) { return *p == 12; }
- 
+
 -// clang-format off
  GSL_SUPPRESS(f.4) // NO-FORMAT: attribute
 -// clang-format on
  bool helper_const(not_null<const int*> p) { return *p == 12; }
- 
+
 -// clang-format off
  GSL_SUPPRESS(f.4) // NO-FORMAT: attribute
 -// clang-format on
  bool strict_helper(strict_not_null<int*> p) { return *p == 12; }
- 
+
 -// clang-format off
  GSL_SUPPRESS(f.4) // NO-FORMAT: attribute
 -// clang-format on
  bool strict_helper_const(strict_not_null<const int*> p) { return *p == 12; }
- 
- int* return_pointer() { return nullptr; }

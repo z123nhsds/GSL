@@ -28,13 +28,11 @@ struct narrowing_error : public std::exception
 
 // narrow() : a checked version of narrow_cast() that throws if the cast changed the value
 template <class T, class U, typename std::enable_if<std::is_arithmetic<T>::value>::type* = nullptr>
-// clang-format off
 GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
 GSL_SUPPRESS(es.46) // NO-FORMAT: attribute // The warning suggests that a floating->unsigned conversion can occur
                                             // in the static_cast below, and that gsl::narrow should be used instead.
                                             // Suppress this warning, since gsl::narrow is defined in terms of
                                             // static_cast
-    // clang-format on
     constexpr T narrow(U u)
 {
     constexpr const bool is_different_signedness =
@@ -64,9 +62,7 @@ GSL_SUPPRESS(p.2) // NO-FORMAT: attribute // don't rely on undefined behavior
 }
 
 template <class T, class U, typename std::enable_if<!std::is_arithmetic<T>::value>::type* = nullptr>
-// clang-format off
 GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
-    // clang-format on
     constexpr T narrow(U u)
 {
     const T t = narrow_cast<T>(u);

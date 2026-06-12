@@ -41,24 +41,16 @@ struct RefCounted
 
 namespace
 {
-// clang-format off
 GSL_SUPPRESS(f.4) // NO-FORMAT: attribute
-// clang-format on
 bool helper(not_null<int*> p) { return *p == 12; }
 
-// clang-format off
 GSL_SUPPRESS(f.4) // NO-FORMAT: attribute
-// clang-format on
 bool helper_const(not_null<const int*> p) { return *p == 12; }
 
-// clang-format off
 GSL_SUPPRESS(f.4) // NO-FORMAT: attribute
-// clang-format on
 bool strict_helper(strict_not_null<int*> p) { return *p == 12; }
 
-// clang-format off
 GSL_SUPPRESS(f.4) // NO-FORMAT: attribute
-// clang-format on
 bool strict_helper_const(strict_not_null<const int*> p) { return *p == 12; }
 
 int* return_pointer() { return nullptr; }
