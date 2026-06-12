@@ -70,6 +70,8 @@ template <typename T, typename U>
 std::string operator==(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
 {
     // clang-format off
+    // clang-format off
+    // clang-format on
     GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
     // clang-format on
     return reinterpret_cast<const void*>(lhs.p_) == reinterpret_cast<const void*>(rhs.p_) ? "true"
@@ -77,7 +79,9 @@ std::string operator==(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
 }
 
 template <typename T, typename U>
+    // clang-format off
 std::string operator!=(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
+    // clang-format on
 {
     // clang-format off
     GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
@@ -85,7 +89,9 @@ std::string operator!=(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
     return reinterpret_cast<const void*>(lhs.p_) != reinterpret_cast<const void*>(rhs.p_) ? "true"
                                                                                           : "false";
 }
+    // clang-format off
 
+    // clang-format on
 template <typename T, typename U>
 std::string operator<(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
 {
@@ -93,7 +99,9 @@ std::string operator<(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
     GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
     // clang-format on
     return reinterpret_cast<const void*>(lhs.p_) < reinterpret_cast<const void*>(rhs.p_) ? "true"
+    // clang-format off
                                                                                          : "false";
+    // clang-format on
 }
 
 template <typename T, typename U>
@@ -101,6 +109,8 @@ std::string operator>(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
 {
     // clang-format off
     GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
+    // clang-format off
+    // clang-format on
     // clang-format on
     return reinterpret_cast<const void*>(lhs.p_) > reinterpret_cast<const void*>(rhs.p_) ? "true"
                                                                                          : "false";
@@ -110,6 +120,8 @@ template <typename T, typename U>
 std::string operator<=(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
 {
     // clang-format off
+    // clang-format off
+    // clang-format on
     GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
     // clang-format on
     return reinterpret_cast<const void*>(lhs.p_) <= reinterpret_cast<const void*>(rhs.p_) ? "true"
@@ -125,9 +137,13 @@ std::string operator>=(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
     return reinterpret_cast<const void*>(lhs.p_) >= reinterpret_cast<const void*>(rhs.p_) ? "true"
                                                                                           : "false";
 }
+// clang-format off
 
+// clang-format on
 struct NonCopyableNonMovable
+// clang-format off
 {
+// clang-format on
     NonCopyableNonMovable() = default;
     NonCopyableNonMovable(const NonCopyableNonMovable&) = delete;
     NonCopyableNonMovable& operator=(const NonCopyableNonMovable&) = delete;

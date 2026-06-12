@@ -164,6 +164,8 @@ namespace details
         {
             Expects(current_ != end_);
             // clang-format off
+            // clang-format off
+            // clang-format on
             GSL_SUPPRESS(bounds.1) // NO-FORMAT: attribute
             // clang-format on
             ++current_;
@@ -194,7 +196,9 @@ namespace details
         constexpr span_iterator& operator+=(const difference_type n) noexcept
         {
             if (n != 0) Expects(begin_ && current_ && end_);
+            // clang-format off
             if (n > 0) Expects(end_ - current_ >= n);
+            // clang-format on
             if (n < 0) Expects(current_ - begin_ >= -n);
             // clang-format off
             GSL_SUPPRESS(bounds.1) // NO-FORMAT: attribute
@@ -311,7 +315,9 @@ namespace details
         constexpr void _Verify_offset(const difference_type n) const noexcept
         { // test that *this + n is within the range of this call
             if (n != 0) Expects(begin_ && current_ && end_);
+        // clang-format off
             if (n > 0) Expects(end_ - current_ >= n);
+        // clang-format on
             if (n < 0) Expects(current_ - begin_ >= -n);
         }
 
@@ -326,7 +332,9 @@ namespace details
         }
 
         // Tell the STL that span_iterator should not be unwrapped if it can't
+        // clang-format off
         // validate in advance, even in release / optimized builds:
+        // clang-format on
 #if defined(GSL_USE_STATIC_CONSTEXPR_WORKAROUND)
         static constexpr const bool _Unwrap_when_unverified = false;
 #else
@@ -581,7 +589,9 @@ public:
     // [span.sub], span subviews
     template <std::size_t Count>
     constexpr span<element_type, Count> first() const noexcept
+    // clang-format off
     {
+        // clang-format on
         static_assert(Extent == dynamic_extent || Count <= Extent,
                       "first() cannot extract more elements from a span than it contains.");
         Expects(Count <= size());
@@ -591,6 +601,8 @@ public:
     template <std::size_t Count>
     // clang-format off
     GSL_SUPPRESS(bounds.1) // NO-FORMAT: attribute
+    // clang-format off
+        // clang-format on
         // clang-format on
         constexpr span<element_type, Count> last() const noexcept
     {
@@ -630,7 +642,9 @@ public:
 
     constexpr span<element_type, dynamic_extent>
     subspan(size_type offset, size_type count = dynamic_extent) const noexcept
+    // clang-format off
     {
+    // clang-format on
         return make_subspan(offset, count, subspan_selector<Extent>{});
     }
 
@@ -655,14 +669,18 @@ public:
     {
         Expects(size() > 0);
         return data()[0];
+        // clang-format off
     }
+        // clang-format on
 
     constexpr reference back() const noexcept
     {
         Expects(size() > 0);
         return data()[size() - 1];
     }
+        // clang-format off
 
+        // clang-format on
     constexpr pointer data() const noexcept { return storage_.data(); }
 
     // [span.iter], span iterator support
@@ -675,7 +693,9 @@ public:
         return {data, data + size(), data};
     }
 
+        // clang-format off
     constexpr iterator end() const noexcept
+        // clang-format on
     {
         const auto data = storage_.data();
         // clang-format off
@@ -732,7 +752,9 @@ private:
     private:
         pointer data_;
     };
+    // clang-format off
 
+    // clang-format on
     storage_type<details::extent_type<Extent>> storage_;
 
     // The rest is needed to remove unnecessary null check
@@ -807,7 +829,9 @@ namespace details
     // this pair of classes could collapse down to a constexpr function
 
     // we should use a narrow_cast<> to go to std::size_t, but older compilers may not see it as
+    // clang-format off
     // constexpr
+    // clang-format on
     // and so will fail compilation of the template
     template <class ElementType, std::size_t Extent>
     struct calculate_byte_size : std::integral_constant<std::size_t, sizeof(ElementType) * Extent>
@@ -818,7 +842,9 @@ namespace details
     template <class ElementType>
     struct calculate_byte_size<ElementType, dynamic_extent>
         : std::integral_constant<std::size_t, dynamic_extent>
+    // clang-format off
     {
+    // clang-format on
     };
 } // namespace details
 

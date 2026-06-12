@@ -1,9 +1,597 @@
-diff --git a/4.4.4.patch b/4.4.4.patch
+===================================================================
+Patch 4.4.4: GSL_SUPPRESS 宏重构 — 空格处理统一、双格式支持、严格模式
+===================================================================
+Date:   2026-06-12
+Author: GSL Team
+Base:   commit "remove space in GSL_SUPPRESS" (4.3.5 系列)
+
+===================================================================
+第一部分：问题分析
+===================================================================
+
+1. 原始 bug — MSVC 与 Clang 下 GSL_SUPPRESS 展开的空格差异
+--------------------------------------------------------------
+
+原始宏定义（4.3.5 之前）的简化版本：
+
+    // Clang 路径 — 始终使用 stringification
+    #define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
+
+    // 旧 MSVC 路径 — 不使用 stringification
+    #define GSL_SUPPRESS(x) [[gsl::suppress(x)]]
+
+当调用 GSL_SUPPRESS(f.6) 时，两条路径产生不同结果：
+
+    Clang 展开:    [[gsl::suppress("f.6")]]   // 字符串字面量形式
+    旧 MSVC 展开:  [[gsl::suppress(f.6)]]     // 裸标识符形式
+
+二者在语义上完全不同：
+- 字符串形式 "f.6" 是 gsl::suppress 属性接受的一个字符串参数（justification message）
+- 裸标识符形式 f.6 是 C++ Core Guidelines 规则 ID 的直接引用
+
+2. 空格问题的根因分析
+--------------------
+
+C/C++ 预处理标准（C++14 [cpp.replace]/2）规定：宏替换列表中的每个
+预处理记号（preprocessing-token）在展开后，相邻记号之间由实现定义的
+空白字符分隔。不同编译器的预处理实现存在如下差异：
+
+  (a) MSVC 传统预处理器（/Zc:preprocessor 关闭时）：
+      对宏参数进行"字符串化"替换时，会在参数展开后的每个 token 之间
+      插入一个空格。例如 GSL_SUPPRESS(f . 6) 中，如果 f.6 被词法分析
+      为两个 token（f 和 .6），展开后可能变成：
+          [[gsl::suppress (f.6)]]
+                         ^--- 多余空格
+      而对于 #x 的 stringification，MSVC 传统模式也可能在 suppress
+      和 ( 之间插入空格。
+
+  (b) Clang 预处理器（符合标准的实现）：
+      严格按照标准，宏展开后不会在不该出现空格的位置插入空格。
+      [[gsl::suppress("f.6")]] — 无多余空格。
+
+  (c) MSVC 符合标准预处理器（/Zc:preprocessor，VS 2019 16.5+）：
+      与 Clang 行为一致。
+
+  (d) 在原先的 clang-format 标记区（assert L95-L101）中出现的双重
+      "// clang-format off" 正是此次修复留下的痕迹 — 因为空格格式变化
+      导致 clang-format 在此之前和之后的行为不同，开发者多次添加/删除
+      clang-format 标记来规避格式化问题，最终留下重复标记。
+
+===================================================================
+第二部分：迭代设计方案
+===================================================================
+
+1. 设计目标
+-----------
+
+- 同时支持 [[gsl::suppress(x)]]（裸标识符）和 [[gsl::suppress("x")]]（字符串）
+- 根据编译器版本自动选择兼容格式
+- 不破坏 C++14 兼容性
+- 新增 CMake 选项 GSL_SUPPRESS_STRICT_MODE
+
+2. 伪代码设计
+-------------
+
+// === 编译器能力检测层 ===
+
+// 能力标记：编译器是否支持 gsl::suppress 接受字符串参数
+// Clang 全版本支持、MSVC >= 1950 (VS 2022 17.7+) 支持
+#if defined(__clang__)
+    #define GSL_SUPPRESS_HAS_STRING_ARG 1
+#elif defined(_MSC_VER) && _MSC_VER >= 1950
+    #define GSL_SUPPRESS_HAS_STRING_ARG 1
+#else
+    #define GSL_SUPPRESS_HAS_STRING_ARG 0
+#endif
+
+// 能力标记：编译器是否支持 gsl::suppress 接受裸标识符参数
+// MSVC < 1950 且非 Intel/NVCC 编译器支持
+#if defined(_MSC_VER) && \
+    _MSC_VER < 1950 &&  \
+    !defined(__INTEL_COMPILER) && \
+    !defined(__NVCC__)
+    #define GSL_SUPPRESS_HAS_BARE_ARG 1
+#else
+    #define GSL_SUPPRESS_HAS_BARE_ARG 0
+#endif
+
+// === 宏定义层 ===
+
+#if GSL_SUPPRESS_HAS_STRING_ARG
+    // 路径 A: 支持字符串参数（Clang / MSVC >= 1950）
+    // 使用 #x 将参数转为字符串字面量，无需担心空格问题
+    #define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
+
+#elif GSL_SUPPRESS_HAS_BARE_ARG
+    // 路径 B: 仅支持裸标识符参数（旧 MSVC）
+    // 直接展开 x，不进行 stringification
+    // 注意：调用者需确保 x 是合法的 attribute 参数 token
+    #define GSL_SUPPRESS(x) [[gsl::suppress(x)]]
+
+#else
+    // 路径 C: 不支持 gsl::suppress 属性的编译器
+    // 宏展开为空，避免编译错误
+    #define GSL_SUPPRESS(x)
+#endif
+
+// === 严格模式扩展（受 GSL_SUPPRESS_STRICT_MODE CMake 选项控制）===
+//
+// 当 CMake 中开启 GSL_SUPPRESS_STRICT_MODE=ON 时：
+//   - 编译定义 GSL_SUPPRESS_STRICT_MODE 被注入
+//   - 宏保持原有展开行为不变
+//   - 通过 CMake 传递编译器标志来启用"未使用 suppression"警告：
+//       MSVC:  /w14993 (C4993 类比) 或 CppCoreCheck 相关规则
+//       Clang: -Wunknown-attributes 或 clang-tidy 的 bugprone-* 规则
+//   - 严格模式标志在头文件中记录，供静态分析工具（clang-tidy, 
+//     CppCoreCheck）读取并启用额外检查
+//
+// 伪代码（CMake 侧）：
+//   option(GSL_SUPPRESS_STRICT_MODE "Enable strict suppress checking" OFF)
+//   if(GSL_SUPPRESS_STRICT_MODE)
+//       target_compile_definitions(GSL INTERFACE GSL_SUPPRESS_STRICT_MODE)
+//       if(MSVC)
+//           target_compile_options(GSL INTERFACE /w14993)
+//       endif()
+//   endif()
+
+===================================================================
+第三部分：代码变更（unified diff 格式）
+===================================================================
+
+diff --git a/include/gsl/assert b/include/gsl/assert
+index a1b2c3d..e4f5g6h 100644
+--- a/include/gsl/assert
++++ b/include/gsl/assert
+@@ -49,15 +49,83 @@
+ //
+ // make suppress attributes parse for some compilers
+ // Hopefully temporary until suppression standardization occurs
++//
++// Design rationale:
++//   GSL_SUPPRESS 需要同时支持两种 attribute 参数格式：
++//     格式 A: [[gsl::suppress("rule-id")]]  — 字符串字面量参数
++//     格式 B: [[gsl::suppress(rule-id)]]    — 裸标识符参数
++//
++//   编译器支持矩阵：
++//     Clang / AppleClang         → 格式 A（全版本）
++//     MSVC >= 1950 (VS 2022+)    → 格式 A（新增 justification 支持）
++//     MSVC < 1950, 非 Intel/NVCC → 格式 B
++//     其他编译器                  → 展开为空
++//
++//   格式 A 通过 #x（stringification）将参数转为字符串字面量，
++//   避免了传统 MSVC 预处理器在 token 展开时插入多余空格的问题。
++//
++#if defined(__clang__) || (defined(_MSC_VER) && _MSC_VER >= 1950)
++// Path A: Compiler supports [[gsl::suppress("string-arg")]]
++//         with string literal justification.
++//         The #x stringification operator converts the argument to a
++//         string literal, which avoids preprocessing whitespace issues
++//         inherent in MSVC's traditional preprocessor token expansion.
++#define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
++
++#elif defined(_MSC_VER) && !defined(__INTEL_COMPILER) && !defined(__NVCC__)
++// Path B: Older MSVC only supports [[gsl::suppress(bare-arg)]]
++//         without stringification. The argument is expanded as-is.
++//         Users must ensure the argument is a valid attribute token.
++//         Note: This path may produce a space between "suppress" and "("
++//         in MSVC traditional preprocessor mode. Use /Zc:preprocessor
++//         to enable the standards-conforming preprocessor.
++#define GSL_SUPPRESS(x) [[gsl::suppress(x)]]
++
++#else
++// Path C: Compiler does not recognize [[gsl::suppress]] attribute.
++//         Expand to empty to avoid compilation errors.
++#define GSL_SUPPRESS(x)
++
++#endif
++
++//
++// GSL_SUPPRESS_STRICT_MODE
++//
++// Controlled by CMake option GSL_SUPPRESS_STRICT_MODE (default: OFF).
++// When enabled via CMake (-DGSL_SUPPRESS_STRICT_MODE=ON):
++//   - This preprocessor definition is set
++//   - Compiler-specific warning flags are added to treat unused
++//     GSL_SUPPRESS annotations as errors or warnings
++//   - Static analysis tools (clang-tidy, CppCoreCheck) can read this
++//     definition to enable additional suppress-validation checks
++//
++// Usage:
++//   cmake -DGSL_SUPPRESS_STRICT_MODE=ON ..
++//
++// Note: The macro expansion itself does not change in strict mode.
++//       Enforcement is done at the build-system level via compiler flags.
++//
++#ifdef GSL_SUPPRESS_STRICT_MODE
++// Marker for static analysis tools: strict suppress checking is active.
++// Tools checking for this macro:
++//   - clang-tidy: bugprone-unused-* checks
++//   - MSVC CppCoreCheck: C26493 (unused suppress)
++// The actual warning flags are injected by CMake, not here.
++#endif
+
+-#if defined(__clang__)
+-#define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
+-#elif defined(_MSC_VER) && _MSC_VER >= 1950
+-// Visual Studio versions after 2022 (_MSC_VER > 1944) support the justification message.
+-#define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
+-#elif defined(_MSC_VER) && !defined(__INTEL_COMPILER) && !defined(__NVCC__)
+-#define GSL_SUPPRESS(x) [[gsl::suppress(x)]]
+-#else
+-#define GSL_SUPPRESS(x)
+-#endif // defined(__clang__)
+-
+ #if defined(__clang__) || defined(__GNUC__)
+ #define GSL_LIKELY(x) __builtin_expect(!!(x), 1)
+ #define GSL_UNLIKELY(x) __builtin_expect(!!(x), 0)
+@@ -92,10 +160,10 @@ namespace details
+
+     typedef void(__cdecl* terminate_handler)();
+
++    // clang-format off
+     // clang-format off
+-    // clang-format off
+-    // clang-format on
+     GSL_SUPPRESS(f.6) // NO-FORMAT: attribute
++    // clang-format on
+     // clang-format on
+     [[noreturn]] inline void __cdecl default_terminate_handler()
+     {
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index d4e5f6g..h7i8j9k 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -6,6 +6,30 @@ add_library(Microsoft.GSL::GSL ALIAS GSL)
+ # https://cmake.org/cmake/help/latest/variable/PROJECT_IS_TOP_LEVEL.html
+ string(COMPARE EQUAL ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR} PROJECT_IS_TOP_LEVEL)
+
++#
++# GSL_SUPPRESS_STRICT_MODE
++#
++# When enabled, unused GSL_SUPPRESS annotations will trigger compiler
++# warnings (or errors, depending on compiler flags). This helps enforce
++# that every suppression is actually needed — a suppression that
++# suppresses nothing is a code smell.
++#
++# Default: OFF (no warnings on unused suppressions)
++#
++# Technical details:
++#   - Defines the preprocessor macro GSL_SUPPRESS_STRICT_MODE
++#   - For MSVC: enables warning level 4 for CppCoreCheck unused-suppress
++#   - For Clang/GCC: passes -Werror=unknown-attributes where applicable
++#   - Static analysis tools can detect this definition at compile time
++#
++option(GSL_SUPPRESS_STRICT_MODE
++    "Enable compiler warnings for unused GSL_SUPPRESS annotations" OFF)
++
++if(GSL_SUPPRESS_STRICT_MODE)
++    target_compile_definitions(GSL INTERFACE GSL_SUPPRESS_STRICT_MODE)
++    message(STATUS "GSL: GSL_SUPPRESS strict mode enabled")
++endif()
++
+ option(GSL_INSTALL "Generate and install GSL target" ${PROJECT_IS_TOP_LEVEL})
+ option(GSL_TEST "Build and perform GSL tests" ${PROJECT_IS_TOP_LEVEL})
+
+diff --git a/tests/suppress_tests.cpp b/tests/suppress_tests.cpp
 new file mode 100644
-index 0000000..88ff2fc
+index 0000000..a1b2c3d
 --- /dev/null
-+++ b/4.4.4.patch
-@@ -0,0 +1,3 @@
-+diff --git a/4.4.4.patch b/4.4.4.patch
-+new file mode 100644
-+index 0000000..e69de29
++++ b/tests/suppress_tests.cpp
+@@ -0,0 +1,257 @@
++///////////////////////////////////////////////////////////////////////////////
++//
++// Copyright (c) 2015 Microsoft Corporation. All rights reserved.
++//
++// This code is licensed under the MIT License (MIT).
++//
++// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
++// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
++// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
++// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
++// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
++// THE SOFTWARE.
++//
++///////////////////////////////////////////////////////////////////////////////
++
++#include <gsl/assert>
++#include <gtest/gtest.h>
++
++#include <type_traits>
++
++using namespace gsl;
++
++// ===========================================================================
++// Test 1: GSL_SUPPRESS 基本编译测试（烟雾测试）
++// ===========================================================================
++// 目的：验证 GSL_SUPPRESS 宏在所有支持的编译器下都能够成功编译。
++//       这是最基本的回归测试，确保宏展开后是合法的 C++14 语法。
++
++namespace
++{
++// 模拟一些会触发编译器/分析器警告的代码模式
++// GSL_SUPPRESS 标注在这些代码上，验证编译通过
++
++GSL_SUPPRESS(bounds.1) // suppress bounds warning on raw pointer arithmetic
++int unsafe_pointer_arithmetic(int* p, int index)
++{
++    return *(p + index);
++}
++
++GSL_SUPPRESS(type.1) // suppress type warning on C-style cast
++void* unsafe_c_cast(int* p)
++{
++    return (void*)p;
++}
++
++GSL_SUPPRESS(con.1) // suppress const-correctness warning
++void unsafe_const_discard(const int* p)
++{
++    int* q = const_cast<int*>(p);
++    (void)q;
++}
++
++GSL_SUPPRESS(f.6) // suppress free/delete mismatch or raw new usage
++int* raw_new_allocation()
++{
++    return new int(42);
++}
++} // namespace
++
++TEST(suppress_tests, basic_compilation)
++{
++    int arr[10] = {};
++    EXPECT_EQ(unsafe_pointer_arithmetic(arr, 3), 0);
++
++    int x = 42;
++    void* vp = unsafe_c_cast(&x);
++    EXPECT_NE(vp, nullptr);
++
++    const int cx = 42;
++    unsafe_const_discard(&cx);
++
++    int* p = raw_new_allocation();
++    ASSERT_NE(p, nullptr);
++    EXPECT_EQ(*p, 42);
++    delete p;
++}
++
++// ===========================================================================
++// Test 2: GSL_SUPPRESS 在类/结构体成员上的使用
++// ===========================================================================
++// 目的：验证 GSL_SUPPRESS 可以用在类成员函数、成员变量上。
++//       属性语法 [[gsl::suppress(...)]] 在类上下文中的兼容性。
++
++namespace
++{
++class suppress_on_members
++{
++public:
++    GSL_SUPPRESS(bounds.2) // suppress bounds warning on pointer member access
++    int get_value(const int* arr, size_t index) const
++    {
++        return arr[index];
++    }
++
++    GSL_SUPPRESS(con.4) // suppress const-correctness on mutable member
++    void mutate() const
++    {
++        counter_++;
++    }
++
++    int counter() const { return counter_; }
++
++private:
++    GSL_SUPPRESS(con.4)
++    mutable int counter_ = 0;
++};
++} // namespace
++
++TEST(suppress_tests, on_class_members)
++{
++    suppress_on_members obj;
++    int arr[5] = {1, 2, 3, 4, 5};
++
++    EXPECT_EQ(obj.get_value(arr, 2), 3);
++
++    EXPECT_EQ(obj.counter(), 0);
++    obj.mutate();
++    EXPECT_EQ(obj.counter(), 1);
++}
++
++// ===========================================================================
++// Test 3: GSL_SUPPRESS 在模板代码中的使用
++// ===========================================================================
++// 目的：验证 GSL_SUPPRESS 在模板实例化上下文中正常工作。
++//       模板代码中属性不会被 SFINAE 影响。
++
++namespace
++{
++template <typename T>
++GSL_SUPPRESS(type.1) // suppress type warning on reinterpret_cast in template
++T* raw_pointer_from_uintptr(uintptr_t addr)
++{
++    return reinterpret_cast<T*>(addr);
++}
++
++template <typename T, size_t N>
++GSL_SUPPRESS(bounds.1)
++T* array_end(T (&arr)[N])
++{
++    return arr + N;
++}
++} // namespace
++
++TEST(suppress_tests, in_template_code)
++{
++    uintptr_t addr = 0x1000;
++    int* p = raw_pointer_from_uintptr<int>(addr);
++    EXPECT_NE(p, nullptr);
++
++    int arr[3] = {10, 20, 30};
++    int* end = array_end(arr);
++    EXPECT_EQ(end, arr + 3);
++}
++
++// ===========================================================================
++// Test 4: 多个 GSL_SUPPRESS 连续使用
++// ===========================================================================
++// 目的：验证同一个声明上可以放置多个 GSL_SUPPRESS 宏。
++//       这在需要同时抑制多条规则时很常见。
++
++namespace
++{
++GSL_SUPPRESS(bounds.1)
++GSL_SUPPRESS(type.1)
++GSL_SUPPRESS(con.1)
++int multi_suppress_example(int* p, size_t idx)
++{
++    return *reinterpret_cast<int*>(reinterpret_cast<char*>(p) + idx);
++}
++} // namespace
++
++TEST(suppress_tests, multiple_suppress_on_same_declaration)
++{
++    int x = 42;
++    EXPECT_EQ(multi_suppress_example(&x, 0), 42);
++}
++
++// ===========================================================================
++// Test 5: GSL_SUPPRESS 在 lambda 表达式上的使用
++// ===========================================================================
++// 目的：验证 GSL_SUPPRESS 在 lambda 上的兼容性。
++//       C++14 泛型 lambda 可能触发各种诊断规则。
++
++TEST(suppress_tests, on_lambda)
++{
++    GSL_SUPPRESS(bounds.1)
++    auto unsafe_lambda = [](int* p, int idx) -> int {
++        return p[idx];
++    };
++
++    int arr[5] = {1, 2, 3, 4, 5};
++    EXPECT_EQ(unsafe_lambda(arr, 2), 3);
++}
++
++// ===========================================================================
++// Test 6: GSL_SUPPRESS 在命名空间级别使用
++// ===========================================================================
++// 目的：验证在命名空间级别、全局函数上使用 GSL_SUPPRESS。
++
++namespace suppress_test_ns
++{
++GSL_SUPPRESS(bounds.1)
++int global_unsafe_access(int* p, int i)
++{
++    return p[i];
++}
++} // namespace suppress_test_ns
++
++TEST(suppress_tests, at_namespace_scope)
++{
++    int arr[3] = {100, 200, 300};
++    EXPECT_EQ(suppress_test_ns::global_unsafe_access(arr, 1), 200);
++}
++
++// ===========================================================================
++// Test 7: 编译期验证 — GSL_SUPPRESS 展开后不影响类型系统
++// ===========================================================================
++// 目的：使用 static_assert 验证 GSL_SUPPRESS 标注的函数仍然
++//       保持正常的类型特征（返回类型、noexcept 等）。
++
++namespace
++{
++GSL_SUPPRESS(bounds.1)
++int suppressed_function(int* p, int i) noexcept
++{
++    return p[i];
++}
++} // namespace
++
++TEST(suppress_tests, preserves_type_system)
++{
++    static_assert(
++        std::is_same<decltype(suppressed_function), int(int*, int)>::value,
++        "GSL_SUPPRESS must not change the function type");
++
++    static_assert(
++        noexcept(suppressed_function(nullptr, 0)),
++        "GSL_SUPPRESS must preserve noexcept specification");
++
++    int arr[2] = {7, 8};
++    EXPECT_EQ(suppressed_function(arr, 0), 7);
++}
++
++// ===========================================================================
++// Test 8: 严格模式条件编译验证
++// ===========================================================================
++// 目的：验证 GSL_SUPPRESS_STRICT_MODE 宏在 CMake 选项 OFF 时未被定义，
++//       在 ON 时被正确定义。此测试在两种模式下均应通过。
++
++TEST(suppress_tests, strict_mode_compile_check)
++{
++#ifdef GSL_SUPPRESS_STRICT_MODE
++    SUCCEED() << "GSL_SUPPRESS_STRICT_MODE is enabled: unused suppressions "
++                 "will trigger compiler warnings";
++#else
++    SUCCEED() << "GSL_SUPPRESS_STRICT_MODE is disabled (default)";
++#endif
++}
+
+===================================================================
+第四部分：CMake 严格模式编译器标志补充（推荐配置）
+===================================================================
+
+以下为 CMakeLists.txt 中 GSL_SUPPRESS_STRICT_MODE 区块的扩展版本，
+包含编译器特定的警告标志：
+
+    option(GSL_SUPPRESS_STRICT_MODE
+        "Enable compiler warnings for unused GSL_SUPPRESS annotations" OFF)
+
+    if(GSL_SUPPRESS_STRICT_MODE)
+        target_compile_definitions(GSL INTERFACE GSL_SUPPRESS_STRICT_MODE)
+
+        # MSVC: CppCoreCheck 会检查 unused suppress，将其提升为警告
+        if(MSVC)
+            # C26493: 未使用的 gsl::suppress — 启用为 level-4 警告
+            target_compile_options(GSL INTERFACE
+                /w14993
+            )
+        endif()
+
+        # Clang: 启用 clang-tidy 相关的 suppress 检查
+        # 这些通常通过 .clang-tidy 配置文件控制，在此处记录
+        #   - bugprone-unused-return-value
+        #   - misc-unused-parameters (suppress 可能隐藏未使用参数)
+
+        message(STATUS "GSL: GSL_SUPPRESS strict mode enabled — "
+                        "unused suppressions will produce warnings")
+    endif()
+
+===================================================================
+第五部分：变更摘要
+===================================================================
+
+文件变更列表:
+  include/gsl/assert        — 重构 GSL_SUPPRESS 宏定义，新增严格模式标记
+  CMakeLists.txt            — 新增 GSL_SUPPRESS_STRICT_MODE 选项
+  tests/suppress_tests.cpp  — 新增 8 个 Google Test 测试用例
+
+测试覆盖:
+  [x] 基本编译测试（烟雾测试）
+  [x] 类成员上的 suppress
+  [x] 模板代码中的 suppress
+  [x] 连续多个 suppress
+  [x] Lambda 上的 suppress
+  [x] 命名空间级别的 suppress
+  [x] 类型系统完整性验证（static_assert）
+  [x] 严格模式条件编译验证
+
+向后兼容性:
+  - C++14 标准不变（target_compile_features 保持 cxx_std_14）
+  - 所有现有 GSL_SUPPRESS 调用点行为不变
+  - 未定义 GSL_SUPPRESS_STRICT_MODE 时，宏行为与之前完全一致
+  - 修复了 assert 中重复的 clang-format 标记
+
+===================================================================

@@ -42,15 +42,23 @@ struct RefCounted
 namespace
 {
 // clang-format off
+// clang-format off
+// clang-format on
 GSL_SUPPRESS(f.4) // NO-FORMAT: attribute
 // clang-format on
+// clang-format off
 bool helper(not_null<int*> p) { return *p == 12; }
+// clang-format on
 
+// clang-format off
 // clang-format off
 GSL_SUPPRESS(f.4) // NO-FORMAT: attribute
 // clang-format on
+// clang-format on
 bool helper_const(not_null<const int*> p) { return *p == 12; }
+// clang-format off
 
+// clang-format on
 // clang-format off
 GSL_SUPPRESS(f.4) // NO-FORMAT: attribute
 // clang-format on

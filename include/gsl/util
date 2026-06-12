@@ -128,6 +128,8 @@ GSL_NODISCARD auto finally(F&& f) noexcept
 // narrow_cast(): a searchable way to do narrowing casts of values
 template <class T, class U>
 // clang-format off
+// clang-format off
+    // clang-format on
 GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
     // clang-format on
     constexpr T narrow_cast(U&& u) noexcept
@@ -137,8 +139,10 @@ GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
 
 //
 // at() - Bounds-checked way of accessing builtin arrays, std::array, std::vector
+// clang-format off
 //
 template <class T, std::size_t N>
+    // clang-format on
 // clang-format off
 GSL_SUPPRESS(bounds.4) // NO-FORMAT: attribute
 GSL_SUPPRESS(bounds.2) // NO-FORMAT: attribute
@@ -147,8 +151,10 @@ GSL_SUPPRESS(bounds.2) // NO-FORMAT: attribute
 {
     static_assert(N <= static_cast<std::size_t>((std::numeric_limits<std::ptrdiff_t>::max)()), "We only support arrays up to PTRDIFF_MAX bytes.");
     Expects(i >= 0 && i < narrow_cast<index>(N));
+// clang-format off
     return arr[narrow_cast<std::size_t>(i)];
 }
+    // clang-format on
 
 template <class Cont>
 // clang-format off
@@ -157,7 +163,9 @@ GSL_SUPPRESS(bounds.2) // NO-FORMAT: attribute
     // clang-format on
     constexpr auto at(Cont& cont, const index i) -> decltype(cont[cont.size()])
 {
+// clang-format off
     Expects(i >= 0 && i < narrow_cast<index>(cont.size()));
+    // clang-format on
     using size_type = decltype(cont.size());
     return cont[narrow_cast<size_type>(i)];
 }

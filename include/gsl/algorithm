@@ -49,6 +49,8 @@ void copy(span<SrcElementType, SrcExtent> src, span<DestElementType, DestExtent>
 
     Expects(dest.size() >= src.size());
     // clang-format off
+    // clang-format off
+    // clang-format on
     GSL_SUPPRESS(stl.1) // NO-FORMAT: attribute
     // clang-format on
     std::copy_n(src.data(), src.size(), dest.data());
