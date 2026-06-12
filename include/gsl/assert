@@ -45,12 +45,25 @@
 // make suppress attributes parse for some compilers
 // Hopefully temporary until suppression standardization occurs
 //
+// NOTE: The attribute-token form is `[[gsl::suppress("xxx")]]` (C++11/C23
+// attributes).  The opening `(` of the attribute-argument-clause MUST directly
+// follow the attribute-name `suppress` with NO intervening whitespace —
+// otherwise GCC/Clang treat `suppress` as a standalone (unrecognized)
+// attribute and fail the translation with an "ignored" / "unknown attribute"
+// warning or, with `-Werror`, a hard error.  Macro expansion can accidentally
+// introduce such a space when `x` is a multi-token argument (e.g. `f.6`), so
+// we always stringify via `#x` and never leave whitespace before `(`.
+//
 #if defined(__clang__)
 #define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
 #elif defined(_MSC_VER) && _MSC_VER >= 1950
 // Visual Studio versions after 2022 (_MSC_VER > 1944) support the justification message.
 #define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
 #elif defined(_MSC_VER) && !defined(__INTEL_COMPILER) && !defined(__NVCC__)
+// Old MSVC accepts the raw identifier form [[gsl::suppress(x)]] (no #x).
+// Even here we MUST keep `suppress` immediately adjacent to `(` to stay
+// aligned with the standard attribute grammar and avoid surprising behavior
+// in mixed / tooling contexts.
 #define GSL_SUPPRESS(x) [[gsl::suppress(x)]]
 #else
 #define GSL_SUPPRESS(x)
