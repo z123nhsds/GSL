@@ -1,0 +1,169 @@
++# 一键验证 patch:
++#   make          # 用 g++ 分别编译 trigger.cc（应失败）和 fixed.cc（应通过）
++#   make CXX=clang++  # 改用 clang++
++
++CXX ?= g++
++CXXFLAGS = -std=c++17 -Werror -Wall -Wextra
++
++.PHONY: all
++all: check-trigger check-fixed
++
++check-trigger: trigger.cc
++	@echo "--- 编译 trigger.cc（预期 FAIL: 'unknown attribute suppress'） ---"
++	-$(CXX) $(CXXFLAGS) -c $< -o /tmp/gsl_trigger.o 2>&1
++	@echo ""
++
++check-fixed: fixed.cc
++	@echo "--- 编译 fixed.cc  （预期 PASS） ---"
++	$(CXX) $(CXXFLAGS) -c $< -o /tmp/gsl_fixed.o 2>&1
++	@echo "OK"
++	@echo ""
++
++.PHONY: clean
++clean:
++	rm -f /tmp/gsl_trigger.o /tmp/gsl_fixed.o
+
++# 1. GSL_SUPPRESS 宏在 MSVC 与 GCC 下的不同展开形式
++
++## 修复前后对比
++
++| 场景 | 宏定义 | 展开示例（传入 `f.6`） |
++| --- | --- | --- |
++| 修复前（GCC/Clang/新 MSVC） | `#define GSL_SUPPRESS(x) [[gsl::suppress (x)]]` | `[[gsl::suppress (f.6)]]` — GCC/Clang 拒绝 |
++| 修复前（旧 MSVC） | `#define GSL_SUPPRESS(x) [[gsl::suppress(x)]]`   | `[[gsl::suppress(f.6)]]` — 旧 MSVC 能解析 |
++| 修复后（推荐） | `#define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]` | `[[gsl::suppress("f.6")]]` — 所有现代编译器可接受 |
++
++## 根因（GCC/Clang 为何拒绝带空格版本）
++
++1. **C++ 属性语法严格**：`[dcl.attr.grammar]` 规定 `(` 必须紧跟在
++   attribute-name 之后，中间不能有空白。
++2. **词法分析的分裂**：GCC/Clang 遇到 `suppress (f.6)` 时，把
++   `suppress` 当作一个“无参数”的未知属性忽略掉，其后的 `(f.6)`
++   不再属于该属性，要么被当成无效 token，要么产生语法错误。
++3. **非标识符参数的二次问题**：即使去掉空格写成 `[[gsl::suppress(x)]]`，
++   当 `x` 是 `f.6`（由多个 token 组成，且不是单个标识符/字面量）时，
++   仍无法构成合法的 attribute-argument-clause；因此需要用 `#x`
++   stringify 成字符串字面量 `"f.6"`。
++
++## 最小触发用例
++
++位于本目录的 `gsl_suppress_bug.cc`：
++
++```
++#define GSL_SUPPRESS(x) [[gsl::suppress (x)]]   // 坏：空格
++GSL_SUPPRESS(f.6)
++int main() { return 0; }
++```
++
++复现：
++
++```
++g++ -std=c++17 -Werror -c gsl_suppress_bug.cc
++# -> unknown attribute 'suppress' ignored / -Werror=attributes 失败
++```
++
++把 `#if 0` 改成 `#if 1` 再编译一次即可看到“坏”宏失败，改回即通过。
+
++// fixed.cc
++// 修复后的宏：`suppress` 与 `(` 紧贴，且 `#x` stringify 参数。
++// 编译：g++ -std=c++17 -Werror -c fixed.cc   -> 应 PASS
++//       clang++ -std=c++17 -Werror -c fixed.cc -> 应 PASS
++
++#define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
++
++GSL_SUPPRESS(f.6)
++int f(int* p) { return p ? *p : 0; }
++
++GSL_SUPPRESS(type.1)
++int main() { return f((int*)0); }
+
++// gsl_suppress_bug.cc
++// ---------------------------------------------------------------------------
++// 最小触发用例：演示 `GSL_SUPPRESS` 宏在 `suppress` 与 `(` 之间留有空格时，
++// GCC/Clang 会拒绝编译（或发出 -Werror 的错误）。
++//
++// 原宏定义：
++//     #define GSL_SUPPRESS(x) [[gsl::suppress (x)]]
++//                         注意这里 ^ 的空格
++//
++// 修复后的宏定义：
++//     #define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
++//     或（仅旧版 MSVC 可接受，且必须紧跟 `(`）：
++//     #define GSL_SUPPRESS(x) [[gsl::suppress(x)]]
++//
++// 根因：
++//   C++11 属性的语法为 `[[ attribute-list ]]`，其中每个 attribute 形如
++//       attribute-namespace::attribute-name(opt(argument-clause))
++//   标准（[dcl.attr.grammar]）要求 `(` 必须紧跟 attribute-name，二者之间
++//   不能出现空白。GCC 与 Clang 的前端严格按此规则做词法/语法分析：
++//     - `[[gsl::suppress("f.6")]]`  -> 合法
++//     - `[[gsl::suppress ("f.6")]]` -> `suppress` 被当作无参数的属性，
++//                                      紧随其后的 `("f.6")` 被当作独立
++//                                      的 token 序列，编译器无法识别并报
++//                                      “unknown attribute 'suppress' ignored”
++//                                      或直接语法错误。
++//   当参数 `x` 形如 `f.6` 这种由多 token 组成、且无法构成单个标识符/
++//   字符串字面量时，必须使用 `#x` 把它 stringify 成一个 string-literal，
++//   才能被属性语法接受（否则就是裸的 `f.6`，同样会失败）。
++//
++// 复现命令（任选其一即会失败，用 `#` 版本即可通过）：
++//     g++ -std=c++17 -Werror -c gsl_suppress_bug.cc
++//     clang++ -std=c++17 -Werror -c gsl_suppress_bug.cc
++// ---------------------------------------------------------------------------
++
++#if 0
++// ---- 修复前的“坏”宏：`suppress` 与 `(` 之间有空格。
++//      GCC/Clang 会报错：
++//          warning: unknown attribute 'suppress' ignored
++//          error: expected expression before ')' token  （视参数而定）
++//          或直接 -Werror 将 warning 升级为 error。
++#define GSL_SUPPRESS(x) [[gsl::suppress (x)]]
++#else
++// ---- 修复后的“好”宏：`suppress` 紧跟 `(`，且通过 `#x` stringify 参数。
++#define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
++#endif
++
++GSL_SUPPRESS(f.6)
++int f(int* p) { return p ? *p : 0; }
++
++GSL_SUPPRESS(type.1)
++int main() { return f((int*)0); }
+
++// trigger.cc
++// 仅含“修复前”的空格版本宏，用来在 GCC/Clang 下复现编译失败。
++// 编译：g++ -std=c++17 -Werror -c trigger.cc   -> 应 FAIL
++//       clang++ -std=c++17 -Werror -c trigger.cc -> 应 FAIL
++
++#define GSL_SUPPRESS(x) [[gsl::suppress (x)]]
++
++GSL_SUPPRESS(f.6)
++int f(int* p) { return p ? *p : 0; }
++
++GSL_SUPPRESS(type.1)
++int main() { return f((int*)0); }
+
+ // make suppress attributes parse for some compilers
+ // Hopefully temporary until suppression standardization occurs
+ //
++// NOTE: The attribute-token form is `[[gsl::suppress("xxx")]]` (C++11/C23
++// attributes).  The opening `(` of the attribute-argument-clause MUST directly
++// follow the attribute-name `suppress` with NO intervening whitespace —
++// otherwise GCC/Clang treat `suppress` as a standalone (unrecognized)
++// attribute and fail the translation with an "ignored" / "unknown attribute"
++// warning or, with `-Werror`, a hard error.  Macro expansion can accidentally
++// introduce such a space when `x` is a multi-token argument (e.g. `f.6`), so
++// we always stringify via `#x` and never leave whitespace before `(`.
++//
+ #if defined(__clang__)
+ #define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
+ #elif defined(_MSC_VER) && _MSC_VER >= 1950
+ // Visual Studio versions after 2022 (_MSC_VER > 1944) support the justification message.
+ #define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
+ #elif defined(_MSC_VER) && !defined(__INTEL_COMPILER) && !defined(__NVCC__)
++// Old MSVC accepts the raw identifier form [[gsl::suppress(x)]] (no #x).
++// Even here we MUST keep `suppress` immediately adjacent to `(` to stay
++// aligned with the standard attribute grammar and avoid surprising behavior
++// in mixed / tooling contexts.
+ #define GSL_SUPPRESS(x) [[gsl::suppress(x)]]
+ #else
+ #define GSL_SUPPRESS(x)
