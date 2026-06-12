@@ -1,9 +1,181 @@
-diff --git a/4.3.2.patch b/4.3.2.patch
-new file mode 100644
-index 0000000..9cbbc71
---- /dev/null
-+++ b/4.3.2.patch
-@@ -0,0 +1,3 @@
-+diff --git a/4.3.2.patch b/4.3.2.patch
-+new file mode 100644
-+index 0000000..e69de29
+diff --git a/include/gsl/assert b/include/gsl/assert
+--- a/include/gsl/assert
++++ b/include/gsl/assert
+@@ -45,13 +45,14 @@
+ // make suppress attributes parse for some compilers
+ // Hopefully temporary until suppression standardization occurs
+ //
+ #if defined(__clang__)
+ #define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
+-#else
+-#if defined(_MSC_VER) && !defined(__INTEL_COMPILER) && !defined(__NVCC__)
++#elif defined(_MSC_VER) && _MSC_VER >= 1950
++// Visual Studio versions after 2022 (_MSC_VER > 1944) support the justification message.
++#define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
++#elif defined(_MSC_VER) && !defined(__INTEL_COMPILER) && !defined(__NVCC__)
+ #define GSL_SUPPRESS(x) [[gsl::suppress(x)]]
+ #else
+ #define GSL_SUPPRESS(x)
+-#endif // _MSC_VER
+-#endif // __clang__
++#endif // defined(__clang__)
+ 
+ #if defined(__clang__) || defined(__GNUC__)
+ #define GSL_LIKELY(x) __builtin_expect(!!(x), 1)
+@@ -92,7 +93,9 @@ namespace details
+     typedef void(__cdecl* terminate_handler)();
+ 
+     // clang-format off
+-    GSL_SUPPRESS(f.6)
++    GSL_SUPPRESS(f.6) // NO-FORMAT: attribute
++    // clang-format on
++
+     [[noreturn]] inline void __cdecl default_terminate_handler()
+     {
+         __fastfail(RANGE_CHECKS_FAILURE);
+diff --git a/include/gsl/span b/include/gsl/span
+--- a/include/gsl/span
++++ b/include/gsl/span
+@@ -220,7 +220,9 @@ public:
+         {
+             if (n != 0) Expects(begin_ && current_ && end_);
+             if (n > 0) Expects(current_ - begin_ >= n);
+             if (n < 0) Expects(end_ - current_ >= -n);
+-            GSL_SUPPRESS(bounds.1)
++            // clang-format off
++            GSL_SUPPRESS(bounds.1) // NO-FORMAT: attribute
++            // clang-format on
+             current_ -= n;
+             return *this;
+         }
+diff --git a/tests/owner_tests.cpp b/tests/owner_tests.cpp
+--- a/tests/owner_tests.cpp
++++ b/tests/owner_tests.cpp
+@@ -21,7 +21,9 @@
+ 
+ using namespace gsl;
+ 
+-GSL_SUPPRESS(f.23)
++// clang-format off
++GSL_SUPPRESS(f.23) // NO-FORMAT: attribute
++// clang-format on
+ void f(int* i) { *i += 1; }
+ 
+ TEST(owner_tests, basic_test)
+diff --git a/tests/notnull_tests.cpp b/tests/notnull_tests.cpp
+--- a/tests/notnull_tests.cpp
++++ b/tests/notnull_tests.cpp
+@@ -68,38 +68,50 @@ struct CustomPtr
+ template <typename T, typename U>
+ std::string operator==(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
+ {
+-    GSL_SUPPRESS(type.1)
++    // clang-format off
++    GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
++    // clang-format on
+     return reinterpret_cast<const void*>(lhs.p_) == reinterpret_cast<const void*>(rhs.p_) ? "true"
+                                                                                           : "false";
+ }
+ 
+ template <typename T, typename U>
+ std::string operator!=(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
+ {
+-    GSL_SUPPRESS(type.1)
++    // clang-format off
++    GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
++    // clang-format on
+     return reinterpret_cast<const void*>(lhs.p_) != reinterpret_cast<const void*>(rhs.p_) ? "true"
+                                                                                           : "false";
+ }
+ 
+ template <typename T, typename U>
+ std::string operator<(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
+ {
+-    GSL_SUPPRESS(type.1)
++    // clang-format off
++    GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
++    // clang-format on
+     return reinterpret_cast<const void*>(lhs.p_) < reinterpret_cast<const void*>(rhs.p_) ? "true"
+                                                                                          : "false";
+ }
+ 
+ template <typename T, typename U>
+ std::string operator>(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
+ {
+-    GSL_SUPPRESS(type.1)
++    // clang-format off
++    GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
++    // clang-format on
+     return reinterpret_cast<const void*>(lhs.p_) > reinterpret_cast<const void*>(rhs.p_) ? "true"
+                                                                                          : "false";
+ }
+ 
+ template <typename T, typename U>
+ std::string operator<=(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
+ {
+-    GSL_SUPPRESS(type.1)
++    // clang-format off
++    GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
++    // clang-format on
+     return reinterpret_cast<const void*>(lhs.p_) <= reinterpret_cast<const void*>(rhs.p_) ? "true"
+                                                                                           : "false";
+ }
+ 
+ template <typename T, typename U>
+ std::string operator>=(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
+ {
+-    GSL_SUPPRESS(type.1)
++    // clang-format off
++    GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
++    // clang-format on
+     return reinterpret_cast<const void*>(lhs.p_) >= reinterpret_cast<const void*>(rhs.p_) ? "true"
+                                                                                           : "false";
+ }
+@@ -135,8 +147,12 @@ struct NonCopyableNonMovable
+ 
+ namespace
+ {
+-GSL_SUPPRESS(f.4)
++// clang-format off
++GSL_SUPPRESS(f.4) // NO-FORMAT: attribute
++// clang-format on
+ bool helper(not_null<int*> p) { return *p == 12; }
+-GSL_SUPPRESS(f.4)
++
++// clang-format off
++GSL_SUPPRESS(f.4) // NO-FORMAT: attribute
++// clang-format on
+ bool helper_const(not_null<const int*> p) { return *p == 12; }
+ 
+ int* return_pointer() { return nullptr; }
+diff --git a/tests/strict_notnull_tests.cpp b/tests/strict_notnull_tests.cpp
+--- a/tests/strict_notnull_tests.cpp
++++ b/tests/strict_notnull_tests.cpp
+@@ -41,18 +41,26 @@ namespace
+ {
+-GSL_SUPPRESS(f.4)
++// clang-format off
++GSL_SUPPRESS(f.4) // NO-FORMAT: attribute
++// clang-format on
+ bool helper(not_null<int*> p) { return *p == 12; }
+ 
+-GSL_SUPPRESS(f.4)
++// clang-format off
++GSL_SUPPRESS(f.4) // NO-FORMAT: attribute
++// clang-format on
+ bool helper_const(not_null<const int*> p) { return *p == 12; }
+ 
+-GSL_SUPPRESS(f.4)
++// clang-format off
++GSL_SUPPRESS(f.4) // NO-FORMAT: attribute
++// clang-format on
+ bool strict_helper(strict_not_null<int*> p) { return *p == 12; }
+ 
+-GSL_SUPPRESS(f.4)
++// clang-format off
++GSL_SUPPRESS(f.4) // NO-FORMAT: attribute
++// clang-format on
+ bool strict_helper_const(strict_not_null<const int*> p) { return *p == 12; }
+ 
+ int* return_pointer() { return nullptr; }
+ } // namespace
