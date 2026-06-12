@@ -1,0 +1,26 @@
+diff --git a/include/gsl/assert b/include/gsl/assert
+index aaaaaaa..bbbbbbb 100644
+--- a/include/gsl/assert
++++ b/include/gsl/assert
+@@ -42,14 +42,17 @@
+ 
+ //
+ // make suppress attributes parse for some compilers
+ // Hopefully temporary until suppression standardization occurs
+ //
+-#define GSL_SUPPRESS(x) [[gsl::suppress (x)]]
+-//                                    ^
+-// BUG: space between attribute-token "suppress" and attribute-argument-clause "(x)"
+-//      violates C++11 attribute grammar (§7.6.1):
+-//        attribute: attribute-token attribute-argument-clause[opt]
+-//      No whitespace is allowed between attribute-token and '('.
++#if defined(__clang__)
++#define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
++#elif defined(_MSC_VER) && _MSC_VER >= 1950
++// Visual Studio versions after 2022 (_MSC_VER > 1944) support the justification message.
++#define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
++#elif defined(_MSC_VER) && !defined(__INTEL_COMPILER) && !defined(__NVCC__)
++#define GSL_SUPPRESS(x) [[gsl::suppress(x)]]
++#else
++#define GSL_SUPPRESS(x)
++#endif // defined(__clang__)
