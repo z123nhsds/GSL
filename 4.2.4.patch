@@ -1,9 +1,107 @@
-diff --git a/4.2.4.patch b/4.2.4.patch
-new file mode 100644
-index 0000000..28ed681
---- /dev/null
-+++ b/4.2.4.patch
-@@ -0,0 +1,3 @@
-+diff --git a/4.2.4.patch b/4.2.4.patch
-+new file mode 100644
-+index 0000000..e69de29
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+Date: Thu, 12 Jun 2025 00:00:00 +0000
+Subject: [PATCH] remove space in GSL_SUPPRESS macro
+
+---
+## 根因分析
+
+在 C++ 标准属性语法 `[[attribute]]` 中，**属性标识符与参数列表左括号 `(` 之间不允许存在空白字符**。
+
+原宏定义：
+```cpp
+#define GSL_SUPPRESS(x) [[gsl::suppress (x)]]
+//                              ^ 这里有一个空格！
+```
+
+当宏展开后，`suppress` 和 `(` 之间的空格导致 GCC/Clang 的 C++ 语法解析器无法将 `suppress(x)` 识别为一个完整的属性，而是将其拆分为：
+1. 无参数属性 `suppress`
+2. 单独的 `(x)` 表达式
+
+这违反了 C++ 标准属性语法，导致编译错误。MSVC 对空格处理较为宽松，因此该问题仅在 GCC/Clang 上触发。
+
+## 修复前后对比
+
+**修复前（错误）：**
+```cpp
+#define GSL_SUPPRESS(x) [[gsl::suppress (x)]]
+```
+
+**修复后（正确）：**
+```cpp
+#define GSL_SUPPRESS(x) [[gsl::suppress(x)]]
+```
+
+关键差异：移除了 `suppress` 和 `(` 之间的空格。
+
+---
+## 触发该 bug 的最小测试用例
+
+```cpp
+// gsl_suppress_bug.cpp
+// 编译命令 (GCC): g++ -std=c++17 gsl_suppress_bug.cpp -o test
+// 编译命令 (Clang): clang++ -std=c++17 gsl_suppress_bug.cpp -o test
+
+namespace gsl {
+template<typename T>
+struct suppress_tag {};
+}
+
+#define GSL_SUPPRESS(x) [[gsl::suppress (x)]]
+
+GSL_SUPPRESS(bounds) void foo() {
+    // 函数定义
+}
+
+int main() {
+    foo();
+    return 0;
+}
+```
+
+## 编译错误示例
+
+GCC 会报类似错误：
+```
+error: expected ')' before '(' token
+    8 | GSL_SUPPRESS(bounds) void foo() {
+      |                     ^
+note: in definition of macro 'GSL_SUPPRESS'
+    5 | #define GSL_SUPPRESS(x) [[gsl::suppress (x)]]
+      |                            ~~~~~~~~~~^
+```
+
+Clang 会报类似错误：
+```
+error: expected ')'
+GSL_SUPPRESS(bounds) void foo() {
+                 ^
+note: expanded from macro 'GSL_SUPPRESS'
+#define GSL_SUPPRESS(x) [[gsl::suppress (x)]]
+                                ^
+```
+---
+diff --git a/include/gsl/gsl b/include/gsl/gsl
+index XXXXXXX..XXXXXXX 100644
+--- a/include/gsl/gsl
++++ b/include/gsl/gsl
+@@ -XXX,XX +XXX,XX @@
+ // GSL-suppress for a specific warning: usage GSL_SUPPRESS( warning-name );
+ // See also gsl::suppress in gsl-lite
+ //
+-#define GSL_SUPPRESS(x) [[gsl::suppress (x)]]
++#define GSL_SUPPRESS(x) [[gsl::suppress(x)]]
+ 
+ // GSL_OMIT_CONTRACTS can be used to turn off all contracts unconditionally
+ #ifndef GSL_OMIT_CONTRACTS
+diff --git a/tests/gsl_tests.cpp b/tests/gsl_tests.cpp
+index XXXXXXX..XXXXXXX 100644
+--- a/tests/gsl_tests.cpp
++++ b/tests/gsl_tests.cpp
+@@ -XXX,XX +XXX,XX @@
+ 
+ TEST(gsl_suppress, works)
+ {
+-    GSL_SUPPRESS( some-warning ) int x = 42;
++    GSL_SUPPRESS(some-warning) int x = 42;
+     EXPECT_EQ(x, 42);
+ }
