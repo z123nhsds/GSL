@@ -1,17 +1,18 @@
-diff --git a/4.3.1.patch b/4.3.1.patch
-index 31cca3d..e69de29 100644
---- a/4.3.1.patch
-+++ b/4.3.1.patch
-@@ -1,9 +0,0 @@
--diff --git a/4.3.1.patch b/4.3.1.patch
--new file mode 100644
--index 0000000..1d8ab6f
----- /dev/null
--+++ b/4.3.1.patch
--@@ -0,0 +1,3 @@
--+diff --git a/4.3.1.patch b/4.3.1.patch
--+new file mode 100644
--+index 0000000..e69de29
++ // Hopefully temporary until suppression standardization occurs
++ //
++ #if defined(__clang__)
++-#define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
+++#define GSL_SUPPRESS(x)[[gsl::suppress(#x)]]
++ #elif defined(_MSC_VER) && _MSC_VER >= 1950
++ // Visual Studio versions after 2022 (_MSC_VER > 1944) support the justification message.
++-#define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
+++#define GSL_SUPPRESS(x)[[gsl::suppress(#x)]]
++ #elif defined(_MSC_VER) && !defined(__INTEL_COMPILER) && !defined(__NVCC__)
++-#define GSL_SUPPRESS(x) [[gsl::suppress(x)]]
+++#define GSL_SUPPRESS(x)[[gsl::suppress(#x)]]
++ #else
++ #define GSL_SUPPRESS(x)
++ #endif // defined(__clang__)
 diff --git a/include/gsl/assert b/include/gsl/assert
 index a08424c..c9961c4 100644
 --- a/include/gsl/assert
