@@ -1,9 +1,262 @@
-diff --git a/4.7.1.patch b/4.7.1.patch
-new file mode 100644
-index 0000000..1f425d4
+===================================================================
 --- /dev/null
-+++ b/4.7.1.patch
-@@ -0,0 +1,3 @@
-+diff --git a/4.7.1.patch b/4.7.1.patch
-+new file mode 100644
-+index 0000000..e69de29
++++ /dev/null
+@@ -1,0 +1,0 @@
+===================================================================
+ 涵盖: (1) CI matrix.include 块 (2) FetchContent 参数 (3) CTest 命令
+===================================================================
+
+------------------------------------------------------------------
+ 1) CI matrix.include 块
+------------------------------------------------------------------
+
+name: Compiler Integration Tests
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # -------- GCC 12 / 13 / 14 (ubuntu-latest)
+          - os: ubuntu-latest
+            compiler: gcc
+            compiler_version: '12'
+            cc: gcc-12
+            cxx: g++-12
+            preset_prefix: gcc
+            build_type: Release
+            cxx_version: 20
+          - os: ubuntu-latest
+            compiler: gcc
+            compiler_version: '13'
+            cc: gcc-13
+            cxx: g++-13
+            preset_prefix: gcc
+            build_type: Release
+            cxx_version: 20
+          - os: ubuntu-latest
+            compiler: gcc
+            compiler_version: '14'
+            cc: gcc-14
+            cxx: g++-14
+            preset_prefix: gcc
+            build_type: Release
+            cxx_version: 20
+
+          # -------- Clang 16 / 17 / 18 (ubuntu-latest)
+          - os: ubuntu-latest
+            compiler: clang
+            compiler_version: '16'
+            cc: clang-16
+            cxx: clang++-16
+            preset_prefix: clang
+            build_type: Release
+            cxx_version: 20
+          - os: ubuntu-latest
+            compiler: clang
+            compiler_version: '17'
+            cc: clang-17
+            cxx: clang++-17
+            preset_prefix: clang
+            build_type: Release
+            cxx_version: 20
+          - os: ubuntu-latest
+            compiler: clang
+            compiler_version: '18'
+            cc: clang-18
+            cxx: clang++-18
+            preset_prefix: clang
+            build_type: Release
+            cxx_version: 20
+
+          # -------- XCode 14.3.1 / 15.4 (macos, AppleClang)
+          #    macos runner 提供 xcode-select 后，cc/cxx 映射到 clang/clang++
+          - os: macos-latest
+            compiler: xcode
+            compiler_version: '14.3.1'
+            cc: clang
+            cxx: clang++
+            preset_prefix: clang
+            build_type: Release
+            cxx_version: 20
+          - os: macos-latest
+            compiler: xcode
+            compiler_version: '15.4'
+            cc: clang
+            cxx: clang++
+            preset_prefix: clang
+            build_type: Release
+            cxx_version: 20
+
+          # -------- Visual Studio 2019 / 2022 (MSVC + LLVM/ClangCL)
+          #    MSVC:  cc=cl, cxx=cl
+          #    LLVM:  cc=clang-cl, cxx=clang-cl  (-T ClangCL)
+          - os: windows-2019
+            compiler: msvc
+            compiler_version: '2019'
+            toolchain: msvc
+            cc: cl
+            cxx: cl
+            preset_prefix: msvc
+            build_type: Release
+            cxx_version: 20
+            extra_cmake_configure_args: ''
+          - os: windows-2019
+            compiler: msvc
+            compiler_version: '2019'
+            toolchain: llvm
+            cc: clang-cl
+            cxx: clang-cl
+            preset_prefix: msvc
+            build_type: Release
+            cxx_version: 20
+            extra_cmake_configure_args: '-T ClangCL'
+          - os: windows-2022
+            compiler: msvc
+            compiler_version: '2022'
+            toolchain: msvc
+            cc: cl
+            cxx: cl
+            preset_prefix: msvc
+            build_type: Release
+            cxx_version: 20
+            extra_cmake_configure_args: ''
+          - os: windows-2022
+            compiler: msvc
+            compiler_version: '2022'
+            toolchain: llvm
+            cc: clang-cl
+            cxx: clang-cl
+            preset_prefix: msvc
+            build_type: Release
+            cxx_version: 20
+            extra_cmake_configure_args: '-T ClangCL'
+
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: select xcode version
+        if: matrix.compiler == 'xcode'
+        run: sudo xcode-select -s /Applications/Xcode_${{ matrix.compiler_version }}.app
+
+      - name: Setup MSBuild
+        if: matrix.compiler == 'msvc'
+        uses: microsoft/setup-msbuild@v3
+
+      - name: Run CMake (configure, build, test)
+        uses: ./.github/workflows/cmake
+        with:
+          cmake_preset: ${{ matrix.preset_prefix }}-${{ matrix.cxx_version }}-${{ matrix.build_type == 'Debug' && 'debug' || 'release' }}
+          extra_cmake_configure_args: ${{ matrix.extra_cmake_configure_args }}
+          extra_cmake_build_args: ${{ matrix.compiler == 'msvc' && format('--config {0}', matrix.build_type) || '' }}
+          extra_ctest_args: ${{ matrix.compiler == 'msvc' && format('-C {0}', matrix.build_type) || '' }}
+
+矩阵中 include 块的关键要点：
+  * 每个 include 项显式指定 os 与 cc/cxx（映射到 env.CC / env.CXX），
+    CMake 的 `project()` 调用时会直接读取这些环境变量。
+  * GCC 项：cc=gcc-V, cxx=g++-V
+  * Clang 项：cc=clang-V, cxx=clang++-V
+  * XCode 项：在切 xcode-select 后，cc=clang, cxx=clang++
+    （AppleClang 的默认 clang/clang++ 指向所选 XCode 里的 clang）
+  * MSVC 项：cc=cl, cxx=cl；额外工具链由 `-T ClangCL` 传参
+  * LLVM/ClangCL 项：cc=clang-cl, cxx=clang-cl；CMake 生成器
+    通过 `-T ClangCL` 切换到 MSVC 前端 LLVM 工具集
+  * build_type / cxx_version 作为后续 preset 字符串的自变量，
+    方便覆盖多个配置（原 job 是用多个轴组合，这里用 include 显式列出）
+
+------------------------------------------------------------------
+ 2) FetchContent 参数说明
+------------------------------------------------------------------
+
+  FetchContent_Declare(GSL
+      GIT_REPOSITORY "https://github.com/microsoft/GSL"
+      GIT_TAG "v4.2.0"
+      GIT_SHALLOW ON
+  )
+
+  * GIT_TAG "v4.2.0"
+      指定要检出的确切 Git 引用（tag / branch / commit hash 均可）。
+      本例为 tag v4.2.0，保证每次 FetchContent 都固定到同一提交，
+      获得可复现的构建；若不写 GIT_TAG，则使用默认分支最新提交，
+      版本无法固定，会带来不确定性。
+
+  * GIT_SHALLOW ON
+      启用 Git 浅克隆（`git clone --depth=1`）。CMake 只会拉取
+      GIT_TAG 对应的那一次提交及其 tree 对象，而不拉取完整历史，
+      这会显著减少网络传输量、磁盘占用与克隆时间。
+
+  * 若不设置 GIT_SHALLOW（默认 OFF）
+      CMake 会做完整克隆（full clone），把整个仓库的 Git 历史记录
+      都拉下来。CI 中每个 job 都会执行一次完整克隆，网络 I/O 与
+      解析时间明显上升：通常单次 clone 增加 5-30 秒（视网络与
+      仓库规模而定）。在多 job 并行矩阵中，每个 job 都会产生
+      一份独立的完整克隆开销，CI 总耗时明显上升，网络抖动
+      导致的 clone 失败概率也会提高。
+
+  小提示：GIT_TAG 若为 branch（例如 main），则 GIT_SHALLOW ON
+  仍然可行；但 commit hash 或 annotated tag 在某些 Git 托管端
+  对 `--depth=1` 的 fetch 需要对应 ref 存在于浅克隆范围内，
+  遇到问题时可以改用 GIT_SHALLOW OFF 或改为指向 branch。
+
+------------------------------------------------------------------
+ 3) CTest 命令：仅运行名称包含 span 的测试，并以 JSON 格式输出结果
+------------------------------------------------------------------
+
+  # 1) 列出所有名称含 span 的测试（仅列出，不执行）—— 纯 JSON 输出
+  ctest -R "span" --show-only=json-v1
+
+  # 2) 真正执行测试，并写入 JSON 事件日志
+  #    (CMake 3.17+ 的 CTest 事件日志机制)
+  ctest -R "span" --test-dir . --output-log span_tests.json --no-compress-output
+
+  # 3) Windows / MSVC 多配置生成器必须指定 -C
+  ctest -C Release -R "span" --test-dir . --output-log span_tests.json --no-compress-output
+
+  # 4) 完整推荐写法（跨平台、可直接复制）
+  ctest \
+      -C Release \
+      -R "span" \
+      --test-dir . \
+      --output-log span_tests.json \
+      --no-compress-output \
+      --output-on-failure
+
+参数说明：
+  -R "span"
+      使用正则匹配测试名（大小写不区分由 CTest 决定）。
+      只运行名称中包含 span 的测试。
+  --test-dir <dir>
+      指定 build 目录（CTest 3.20+），替代传统 "cd build && ctest"。
+  --output-log <file>
+      CTest 事件日志文件（JSON 格式，由 CTest 3.17+ 支持）。
+  --no-compress-output
+      不压缩输出，便于人类阅读与后续工具链解析。
+  -C Release
+      仅针对多配置生成器（Visual Studio、XCode）需要；
+      指定要运行的构建配置。
+  --output-on-failure
+      失败时在控制台打印该测试的完整 stdout/stderr，便于诊断。
+  --show-only=json-v1
+      不执行测试，仅以 JSON 列出匹配到的测试（用于提前检查 -R 是否生效）。
+
+生成的 JSON 事件日志文件（span_tests.json / span_tests.json.*）
+会包含每个测试的 Start/End/Result 记录，可以被 CI dashboard
+（如 CDash）或自定义脚本解析。
+
+==================================================================
