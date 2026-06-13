@@ -1,208 +1,271 @@
--From: GSL CI Matrix Enhancement
--Subject: [PATCH] Add unified CI matrix with include blocks, FetchContent docs, and CTest span filter
--
-----
--Question 1: CI Matrix include block with CC/CXX for all compilers
-----
--
--The following `include` block defines a unified matrix strategy that covers
--GCC 12/13/14, Clang 16/17/18, XCode 14.3.1/15.4, and VS2019/VS2022 (MSVC + LLVM),
--each with the appropriate CC/CXX environment variables:
--
----- a/.github/workflows/compilers.yml
--+++ b/.github/workflows/compilers.yml
--@@ -0,0 +1,120 @@
--+name: Compiler Integration Tests (Unified Matrix)
--+
--+concurrency:
--+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
--+  cancel-in-progress: true
--+
--+on:
--+  push:
--+    branches: [ main ]
--+  pull_request:
--+    branches: [ main ]
--+
--+jobs:
--+  compiler-matrix:
--+    strategy:
--+      fail-fast: false
--+      matrix:
--+        include:
--+          # ── GCC 12/13/14 on Ubuntu ──────────────────────────────────
--+          - compiler_family: gcc
--+            compiler_version: 12
--+            os: ubuntu-latest
--+            cc: gcc-12
--+            cxx: g++-12
--+            cmake_preset_prefix: gcc
--+          - compiler_family: gcc
--+            compiler_version: 13
--+            os: ubuntu-latest
--+            cc: gcc-13
--+            cxx: g++-13
--+            cmake_preset_prefix: gcc
--+          - compiler_family: gcc
--+            compiler_version: 14
--+            os: ubuntu-latest
--+            cc: gcc-14
--+            cxx: g++-14
--+            cmake_preset_prefix: gcc
--+
--+          # ── Clang 16/17/18 on Ubuntu ────────────────────────────────
--+          - compiler_family: clang
--+            compiler_version: 16
--+            os: ubuntu-latest
--+            cc: clang-16
--+            cxx: clang++-16
--+            cmake_preset_prefix: clang
--+          - compiler_family: clang
--+            compiler_version: 17
--+            os: ubuntu-latest
--+            cc: clang-17
--+            cxx: clang++-17
--+            cmake_preset_prefix: clang
--+          - compiler_family: clang
--+            compiler_version: 18
--+            os: ubuntu-latest
--+            cc: clang-18
--+            cxx: clang++-18
--+            cmake_preset_prefix: clang
--+
--+          # ── XCode 14.3.1 / 15.4 on macOS (Apple Clang) ─────────────
--+          - compiler_family: xcode
--+            compiler_version: "14.3.1"
--+            os: macos-13
--+            cc: cc
--+            cxx: c++
--+            cmake_preset_prefix: clang
--+          - compiler_family: xcode
--+            compiler_version: "15.4"
--+            os: macos-14
--+            cc: cc
--+            cxx: c++
--+            cmake_preset_prefix: clang
--+
--+          # ── Visual Studio 2019 – MSVC ───────────────────────────────
--+          - compiler_family: msvc
--+            compiler_version: 2019
--+            os: windows-2019
--+            cc: cl
--+            cxx: cl
--+            cmake_preset_prefix: msvc
--+            generator: "Visual Studio 16 2019"
--+            toolset: ""
--+
--+          # ── Visual Studio 2019 – LLVM (ClangCL) ─────────────────────
--+          - compiler_family: llvm
--+            compiler_version: 2019
--+            os: windows-2019
--+            cc: clang-cl
--+            cxx: clang-cl
--+            cmake_preset_prefix: msvc
--+            generator: "Visual Studio 16 2019"
--+            toolset: "-T ClangCL"
--+
--+          # ── Visual Studio 2022 – MSVC ───────────────────────────────
--+          - compiler_family: msvc
--+            compiler_version: 2022
--+            os: windows-2022
--+            cc: cl
--+            cxx: cl
--+            cmake_preset_prefix: msvc
--+            generator: "Visual Studio 17 2022"
--+            toolset: ""
--+
--+          # ── Visual Studio 2022 – LLVM (ClangCL) ─────────────────────
--+          - compiler_family: llvm
--+            compiler_version: 2022
--+            os: windows-2022
--+            cc: clang-cl
--+            cxx: clang-cl
--+            cmake_preset_prefix: msvc
--+            generator: "Visual Studio 17 2022"
--+            toolset: "-T ClangCL"
--+
--+        build_type: [ Debug, Release ]
--+        cxx_version: [ 14, 17, 20, 23 ]
--+
--+        exclude:
--+          # gcc-12 cannot compile GoogleTest with C++20/23
--+          - compiler_family: gcc
--+            compiler_version: 12
--+            cxx_version: 20
--+          - compiler_family: gcc
--+            compiler_version: 12
--+            cxx_version: 23
--+          # clang-17 has a known issue with C++23
--+          - compiler_family: clang
--+            compiler_version: 17
--+            cxx_version: 23
--+
--+    runs-on: ${{ matrix.os }}
--+    steps:
--+      - uses: actions/checkout@v6
--+
--+      - name: Select XCode version (macOS)
--+        if: matrix.compiler_family == 'xcode'
--+        run: sudo xcode-select -s /Applications/Xcode_${{ matrix.compiler_version }}.app
--+
--+      - name: Configure & Build
--+        uses: ./.github/workflows/cmake
--+        with:
--+          cmake_preset: ${{ matrix.cmake_preset_prefix }}-${{ matrix.cxx_version }}-${{ matrix.build_type == 'Debug' && 'debug' || 'release' }}
--+          extra_cmake_configure_args: ${{ matrix.toolset || '' }}
--+        env:
--+          CC: ${{ matrix.cc }}
--+          CXX: ${{ matrix.cxx }}
--
-----
--Question 2: FetchContent – GIT_TAG and GIT_SHALLOW
-----
--
--GIT_TAG "v4.2.0":
--  Controls which commit/branch/tag of the GSL repository is checked out.
--  "v4.2.0" is a Git tag pointing to the exact release commit, ensuring
--  reproducible, pinned builds. Without it, FetchContent would default to
--  the repository's default branch (typically "main"), which may include
--  unreleased changes and break reproducibility.
--
--GIT_SHALLOW ON:
--  Performs a shallow clone (git clone --depth 1) instead of a full
--  history clone. Only the latest commit reachable from GIT_TAG is
--  fetched, without any parent history.
--
--If GIT_SHALLOW is not set (defaults to OFF):
--  A full clone of the repository is performed, downloading the entire
--  Git history (potentially thousands of commits and all branch data).
--  In CI this typically adds 30-60 seconds of extra clone time per job,
--  and for large repositories can add several minutes. Since GSL is a
--  header-only library and the build only needs the source tree at the
--  tagged commit, the full history is unnecessary. Setting GIT_SHALLOW ON
--  is the recommended practice for CI to minimize network I/O and clone
--  duration.
--
----- a/examples/fetch_content_example/CMakeLists.txt
--+++ b/examples/fetch_content_example/CMakeLists.txt
--@@ -0,0 +1,22 @@
--+cmake_minimum_required(VERSION 3.14)
--+project(fetch_content_example LANGUAGES CXX)
--+
+--From: GSL CI Matrix Enhancement
+--Subject: [PATCH] Add unified CI matrix with include blocks, FetchContent docs, and CTest span filter
+--
+-----
+--Question 1: CI Matrix include block with CC/CXX for all compilers
+-----
+--
+--The following `include` block defines a unified matrix strategy that covers
+--GCC 12/13/14, Clang 16/17/18, XCode 14.3.1/15.4, and VS2019/VS2022 (MSVC + LLVM),
+--each with the appropriate CC/CXX environment variables:
+--
+----- a/.github/workflows/compilers.yml
+--+++ b/.github/workflows/compilers.yml
+--@@ -0,0 +1,120 @@
+--+name: Compiler Integration Tests (Unified Matrix)
+--+
+--+concurrency:
+--+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+--+  cancel-in-progress: true
+--+
+--+on:
+--+  push:
+--+    branches: [ main ]
+--+  pull_request:
+--+    branches: [ main ]
+--+
+--+jobs:
+--+  compiler-matrix:
+--+    strategy:
+--+      fail-fast: false
+--+      matrix:
+--+        include:
+--+          # ── GCC 12/13/14 on Ubuntu ──────────────────────────────────
+--+          - compiler_family: gcc
+--+            compiler_version: 12
+--+            os: ubuntu-latest
+--+            cc: gcc-12
+--+            cxx: g++-12
+--+            cmake_preset_prefix: gcc
+--+          - compiler_family: gcc
+--+            compiler_version: 13
+--+            os: ubuntu-latest
+--+            cc: gcc-13
+--+            cxx: g++-13
+--+            cmake_preset_prefix: gcc
+--+          - compiler_family: gcc
+--+            compiler_version: 14
+--+            os: ubuntu-latest
+--+            cc: gcc-14
+--+            cxx: g++-14
+--+            cmake_preset_prefix: gcc
+--+
+--+          # ── Clang 16/17/18 on Ubuntu ────────────────────────────────
+--+          - compiler_family: clang
+--+            compiler_version: 16
+--+            os: ubuntu-latest
+--+            cc: clang-16
+--+            cxx: clang++-16
+--+            cmake_preset_prefix: clang
+--+          - compiler_family: clang
+--+            compiler_version: 17
+--+            os: ubuntu-latest
+--+            cc: clang-17
+--+            cxx: clang++-17
+--+            cmake_preset_prefix: clang
+--+          - compiler_family: clang
+--+            compiler_version: 18
+--+            os: ubuntu-latest
+--+            cc: clang-18
+--+            cxx: clang++-18
+--+            cmake_preset_prefix: clang
+--+
+--+          # ── XCode 14.3.1 / 15.4 on macOS (Apple Clang) ─────────────
+--+          - compiler_family: xcode
+--+            compiler_version: "14.3.1"
+--+            os: macos-13
+--+            cc: cc
+--+            cxx: c++
+--+            cmake_preset_prefix: clang
+--+          - compiler_family: xcode
+--+            compiler_version: "15.4"
+--+            os: macos-14
+--+            cc: cc
+--+            cxx: c++
+--+            cmake_preset_prefix: clang
+--+
+--+          # ── Visual Studio 2019 – MSVC ───────────────────────────────
+--+          - compiler_family: msvc
+--+            compiler_version: 2019
+--+            os: windows-2019
+--+            cc: cl
+--+            cxx: cl
+--+            cmake_preset_prefix: msvc
+--+            generator: "Visual Studio 16 2019"
+--+            toolset: ""
+--+
+--+          # ── Visual Studio 2019 – LLVM (ClangCL) ─────────────────────
+--+          - compiler_family: llvm
+--+            compiler_version: 2019
+--+            os: windows-2019
+--+            cc: clang-cl
+--+            cxx: clang-cl
+--+            cmake_preset_prefix: msvc
+--+            generator: "Visual Studio 16 2019"
+--+            toolset: "-T ClangCL"
+--+
+--+          # ── Visual Studio 2022 – MSVC ───────────────────────────────
+--+          - compiler_family: msvc
+--+            compiler_version: 2022
+--+            os: windows-2022
+--+            cc: cl
+--+            cxx: cl
+--+            cmake_preset_prefix: msvc
+--+            generator: "Visual Studio 17 2022"
+--+            toolset: ""
+--+
+--+          # ── Visual Studio 2022 – LLVM (ClangCL) ─────────────────────
+--+          - compiler_family: llvm
+--+            compiler_version: 2022
+--+            os: windows-2022
+--+            cc: clang-cl
+--+            cxx: clang-cl
+--+            cmake_preset_prefix: msvc
+--+            generator: "Visual Studio 17 2022"
+--+            toolset: "-T ClangCL"
+--+
+--+        build_type: [ Debug, Release ]
+--+        cxx_version: [ 14, 17, 20, 23 ]
+--+
+--+        exclude:
+--+          # gcc-12 cannot compile GoogleTest with C++20/23
+--+          - compiler_family: gcc
+--+            compiler_version: 12
+--+            cxx_version: 20
+--+          - compiler_family: gcc
+--+            compiler_version: 12
+--+            cxx_version: 23
+--+          # clang-17 has a known issue with C++23
+--+          - compiler_family: clang
+--+            compiler_version: 17
+--+            cxx_version: 23
+--+
+--+    runs-on: ${{ matrix.os }}
+--+    steps:
+--+      - uses: actions/checkout@v6
+--+
+--+      - name: Select XCode version (macOS)
+--+        if: matrix.compiler_family == 'xcode'
+--+        run: sudo xcode-select -s /Applications/Xcode_${{ matrix.compiler_version }}.app
+--+
+--+      - name: Configure & Build
+--+        uses: ./.github/workflows/cmake
+--+        with:
+--+          cmake_preset: ${{ matrix.cmake_preset_prefix }}-${{ matrix.cxx_version }}-${{ matrix.build_type == 'Debug' && 'debug' || 'release' }}
+--+          extra_cmake_configure_args: ${{ matrix.toolset || '' }}
+--+        env:
+--+          CC: ${{ matrix.cc }}
+--+          CXX: ${{ matrix.cxx }}
+--
+-----
+--Question 2: FetchContent – GIT_TAG and GIT_SHALLOW
+-----
+--
+--GIT_TAG "v4.2.0":
+--  Controls which commit/branch/tag of the GSL repository is checked out.
+--  "v4.2.0" is a Git tag pointing to the exact release commit, ensuring
+--  reproducible, pinned builds. Without it, FetchContent would default to
+--  the repository's default branch (typically "main"), which may include
+--  unreleased changes and break reproducibility.
+--
+--GIT_SHALLOW ON:
+--  Performs a shallow clone (git clone --depth 1) instead of a full
+--  history clone. Only the latest commit reachable from GIT_TAG is
+--  fetched, without any parent history.
+--
+--If GIT_SHALLOW is not set (defaults to OFF):
+--  A full clone of the repository is performed, downloading the entire
+--  Git history (potentially thousands of commits and all branch data).
+--  In CI this typically adds 30-60 seconds of extra clone time per job,
+--  and for large repositories can add several minutes. Since GSL is a
+--  header-only library and the build only needs the source tree at the
+--  tagged commit, the full history is unnecessary. Setting GIT_SHALLOW ON
+--  is the recommended practice for CI to minimize network I/O and clone
+--  duration.
+--
+----- a/examples/fetch_content_example/CMakeLists.txt
+--+++ b/examples/fetch_content_example/CMakeLists.txt
+--@@ -0,0 +1,22 @@
+--+cmake_minimum_required(VERSION 3.14)
+--+project(fetch_content_example LANGUAGES CXX)
+--+
+--+include(FetchContent)
+--+
+--+# GIT_TAG "v4.2.0"  →  Checks out the exact release tagged v4.2.0,
+--+#                        ensuring reproducible, pinned builds.
+--+#                        Without it, the default branch HEAD is used,
+--+#                        which may include unreleased / breaking changes.
+--+#
+--+# GIT_SHALLOW ON     →  Performs a shallow clone (git clone --depth 1),
+--+#                        fetching only the commit at GIT_TAG without
+--+#                        the full history.
+--+#                        If omitted (defaults OFF), a full clone downloads
+--+#                        the entire Git history, adding ~30-60s of extra
+--+#                        clone time per CI job. For a header-only library
+--+#                        like GSL, the full history is unnecessary.
+--+
+--+FetchContent_Declare(GSL
+--+    GIT_REPOSITORY "https://github.com/microsoft/GSL"
+--+    GIT_TAG        "v4.2.0"
+--+    GIT_SHALLOW    ON
+--+)
+--+
+--+FetchContent_MakeAvailable(GSL)
+--+
+--+target_link_libraries(foobar PRIVATE Microsoft.GSL::GSL)
+--
+-----
+--Question 3: CTest command – run only "span" tests with JSON output
+-----
+--
+--Command:
+--
+--  ctest --output-on-failure -R span --output-junit span-results.xml -T Test --no-compress-output
+--
+--For native JSON output (CTest 3.21+):
+--
+--  ctest -R span --output-json span-results.json
+--
+--Explanation of flags:
+--  -R span           →  Run only tests whose name matches the regex "span"
+--  --output-json     →  Write test results in JSON format (requires CMake 3.21+)
+--  --output-junit    →  Alternative: write JUnit-style XML (widely supported)
+--
+--If CMake < 3.21 is available, use the JUnit XML output and convert:
+--
+--  ctest -R span --output-junit span-results.xml
+--  # Then convert XML to JSON with a tool like jq + xq, or use a CI plugin
+--
+----- a/scripts/run_span_tests.sh
+--+++ b/scripts/run_span_tests.sh
+--@@ -0,0 +1,18 @@
+--+#!/usr/bin/env bash
+--+set -euo pipefail
+--+
+--+# Run only tests whose names contain "span", output results as JSON.
+--+# Requires CMake 3.21+ for native --output-json support.
+--+#
+--+# Usage:
+--+#   ./scripts/run_span_tests.sh [build_dir]
+--+
+--+BUILD_DIR="${1:-build}"
+--+
+--+ctest \
+--+  --test-dir "${BUILD_DIR}" \
+--+  -R span \
+--+  --output-json "${BUILD_DIR}/span-test-results.json" \
+--+  --output-on-failure
+--+
+--+echo "Results written to ${BUILD_DIR}/span-test-results.json"
+-diff --git a/CMakeLists.txt b/CMakeLists.txt
+-index b306dc1..731fc42 100644
+---- a/CMakeLists.txt
+-+++ b/CMakeLists.txt
+-@@ -2,6 +2,14 @@ cmake_minimum_required(VERSION 3.14...3.16)
+- 
+- project(GSL VERSION 4.2.0 LANGUAGES CXX)
+- 
 -+include(FetchContent)
--+
--+# GIT_TAG "v4.2.0"  →  Checks out the exact release tagged v4.2.0,
--+#                        ensuring reproducible, pinned builds.
--+#                        Without it, the default branch HEAD is used,
--+#                        which may include unreleased / breaking changes.
--+#
--+# GIT_SHALLOW ON     →  Performs a shallow clone (git clone --depth 1),
--+#                        fetching only the commit at GIT_TAG without
--+#                        the full history.
--+#                        If omitted (defaults OFF), a full clone downloads
--+#                        the entire Git history, adding ~30-60s of extra
--+#                        clone time per CI job. For a header-only library
--+#                        like GSL, the full history is unnecessary.
 -+
 -+FetchContent_Declare(GSL
 -+    GIT_REPOSITORY "https://github.com/microsoft/GSL"
@@ -210,81 +273,18 @@
 -+    GIT_SHALLOW    ON
 -+)
 -+
--+FetchContent_MakeAvailable(GSL)
--+
--+target_link_libraries(foobar PRIVATE Microsoft.GSL::GSL)
--
-----
--Question 3: CTest command – run only "span" tests with JSON output
-----
--
--Command:
--
--  ctest --output-on-failure -R span --output-junit span-results.xml -T Test --no-compress-output
--
--For native JSON output (CTest 3.21+):
--
--  ctest -R span --output-json span-results.json
--
--Explanation of flags:
--  -R span           →  Run only tests whose name matches the regex "span"
--  --output-json     →  Write test results in JSON format (requires CMake 3.21+)
--  --output-junit    →  Alternative: write JUnit-style XML (widely supported)
--
--If CMake < 3.21 is available, use the JUnit XML output and convert:
--
--  ctest -R span --output-junit span-results.xml
--  # Then convert XML to JSON with a tool like jq + xq, or use a CI plugin
--
----- a/scripts/run_span_tests.sh
--+++ b/scripts/run_span_tests.sh
--@@ -0,0 +1,18 @@
--+#!/usr/bin/env bash
--+set -euo pipefail
--+
--+# Run only tests whose names contain "span", output results as JSON.
--+# Requires CMake 3.21+ for native --output-json support.
--+#
--+# Usage:
--+#   ./scripts/run_span_tests.sh [build_dir]
--+
--+BUILD_DIR="${1:-build}"
--+
--+ctest \
--+  --test-dir "${BUILD_DIR}" \
--+  -R span \
--+  --output-json "${BUILD_DIR}/span-test-results.json" \
--+  --output-on-failure
--+
--+echo "Results written to ${BUILD_DIR}/span-test-results.json"
-diff --git a/CMakeLists.txt b/CMakeLists.txt
-index b306dc1..731fc42 100644
---- a/CMakeLists.txt
-+++ b/CMakeLists.txt
-@@ -2,6 +2,14 @@ cmake_minimum_required(VERSION 3.14...3.16)
- 
- project(GSL VERSION 4.2.0 LANGUAGES CXX)
- 
-+include(FetchContent)
-+
-+FetchContent_Declare(GSL
-+    GIT_REPOSITORY "https://github.com/microsoft/GSL"
-+    GIT_TAG        "v4.2.0"
-+    GIT_SHALLOW    ON
-+)
-+
- add_library(GSL INTERFACE)
- add_library(Microsoft.GSL::GSL ALIAS GSL)
- 
-diff --git a/tests/CMakeLists.txt.in b/tests/CMakeLists.txt.in
-index 4f919f6..b7643e5 100644
---- a/tests/CMakeLists.txt.in
-+++ b/tests/CMakeLists.txt.in
-@@ -5,6 +5,7 @@ include(ExternalProject)
- ExternalProject_Add(googletest
-   GIT_REPOSITORY    https://github.com/google/googletest.git
-   GIT_TAG           v1.14.0
-+  GIT_SHALLOW       ON
-   SOURCE_DIR        "${CMAKE_CURRENT_BINARY_DIR}/googletest-src"
-   BINARY_DIR        "${CMAKE_CURRENT_BINARY_DIR}/googletest-build"
-   CONFIGURE_COMMAND ""
+- add_library(GSL INTERFACE)
+- add_library(Microsoft.GSL::GSL ALIAS GSL)
+- 
+-diff --git a/tests/CMakeLists.txt.in b/tests/CMakeLists.txt.in
+-index 4f919f6..b7643e5 100644
+---- a/tests/CMakeLists.txt.in
+-+++ b/tests/CMakeLists.txt.in
+-@@ -5,6 +5,7 @@ include(ExternalProject)
+- ExternalProject_Add(googletest
+-   GIT_REPOSITORY    https://github.com/google/googletest.git
+-   GIT_TAG           v1.14.0
+-+  GIT_SHALLOW       ON
+-   SOURCE_DIR        "${CMAKE_CURRENT_BINARY_DIR}/googletest-src"
+-   BINARY_DIR        "${CMAKE_CURRENT_BINARY_DIR}/googletest-build"
+-   CONFIGURE_COMMAND ""
