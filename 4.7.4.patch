@@ -1,335 +1,335 @@
---+From 6e8f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f Mon Sep 17 00:00:00 2001
---+From: GSL Maintainers <gsl@microsoft.com>
---+Date: Fri, 12 Jun 2026 00:00:00 +0000
---+Subject: [PATCH v4.7.4] CI: unified matrix with include blocks, FetchContent
---+ docs, span test commands
---+
---+This patch introduces the following changes:
---+
---+1. CI Matrix Strategy Refactoring
---+   - Replaces the split-job approach (gcc/clang/xcode/VisualStudio) with a
---+     unified single-job matrix using `include` blocks.
---+   - Each compiler/toolset entry explicitly defines CC/CXX via matrix
---+     variables and job-level `env:`, making the toolchain selection
---+     transparent and easy to audit.
---+   - Supports: GCC 12/13/14, Clang 16/17/18, XCode 14.3.1/15.4,
---+     VS2019 (MSVC + LLVM/ClangCL), VS2022 (MSVC + LLVM/ClangCL).
---+
---+2. FetchContent Documentation Clarification
---+   - Adds explicit commentary on GIT_TAG vs GIT_SHALLOW semantics.
---+   - Documents the CI time impact of omitting GIT_SHALLOW.
---+
---+3. CTest Span Test Recipe
---+   - Adds a documented command for running only span-related tests
---+     with structured output.
---+
---+---
---+ .github/workflows/compilers.yml | 179 ++++++++++++++++++++++++++++++---------
---+ README.md                        |  47 ++++++++++-
---+ docs/ci-ctest-recipes.md         |  65 ++++++++++++++
---+ 3 files changed, 249 insertions(+), 42 deletions(-)
---+ create mode 100644 docs/ci-ctest-recipes.md
---+
---+diff --git a/.github/workflows/compilers.yml b/.github/workflows/compilers.yml
---+index a1b2c3d..e4f5g6h 100644
---+--- a/.github/workflows/compilers.yml
---++++ b/.github/workflows/compilers.yml
---+@@ -10,54 +10,149 @@ on:
---+ # These jobs are correlated with the officially supported compilers
---+ # and toolsets. If you change any versions, please update README.md.
---+
---++#
---++# Unified matrix strategy -- all compilers/platforms in one job via `include`.
---++# Each include entry explicitly sets CC/CXX via env at the job level.
---++#
---+ jobs:
---+-  gcc:
---++  build-and-test:
---+     strategy:
---++      fail-fast: false
---+       matrix:
---+-        gcc_version: [ 12, 13, 14 ]
---+         build_type: [ Debug, Release ]
---+         cxx_version: [ 14, 17, 20, 23 ]
---+-        exclude:
---+-          # https://github.com/google/googletest/issues/4232
---+-          # Looks like GoogleTest is not interested in making version 1.14
---+-          # work with gcc-12.
---+-          - gcc_version: 12
---++        include:
---++          # ================================================================
---++          #  GCC: gcc-12, gcc-13, gcc-14 on ubuntu-latest
---++          # ================================================================
---++          - name: GCC 12
---++            os: ubuntu-latest
---++            cc: gcc-12
---++            cxx: g++-12
---++            cmake_preset_prefix: gcc
---++            exclude_cxx20: true
---++            exclude_cxx23: true
---++
---++          - name: GCC 13
---++            os: ubuntu-latest
---++            cc: gcc-13
---++            cxx: g++-13
---++            cmake_preset_prefix: gcc
---++
---++          - name: GCC 14
---++            os: ubuntu-latest
---++            cc: gcc-14
---++            cxx: g++-14
---++            cmake_preset_prefix: gcc
---++
---++          # ================================================================
---++          #  Clang: clang-16, clang-17, clang-18 on ubuntu-latest
---++          # ================================================================
---++          - name: Clang 16
---++            os: ubuntu-latest
---++            cc: clang-16
---++            cxx: clang++-16
---++            cmake_preset_prefix: clang
---++
---++          - name: Clang 17
---++            os: ubuntu-latest
---++            cc: clang-17
---++            cxx: clang++-17
---++            cmake_preset_prefix: clang
---++            exclude_cxx23: true
---++
---++          - name: Clang 18
---++            os: ubuntu-latest
---++            cc: clang-18
---++            cxx: clang++-18
---++            cmake_preset_prefix: clang
---++
---++          # ================================================================
---++          #  XCode / Apple Clang: 14.3.1, 15.4 on macos
---++          # ================================================================
---++          - name: XCode 14.3.1
---++            os: macos-13
---++            cc: clang
---++            cxx: clang++
---++            cmake_preset_prefix: clang
---++            xcode_version: '14.3.1'
---++            is_xcode: true
---++
---++          - name: XCode 15.4
---++            os: macos-14
---++            cc: clang
---++            cxx: clang++
---++            cmake_preset_prefix: clang
---++            xcode_version: '15.4'
---++            is_xcode: true
---++
---++          # ================================================================
---++          #  VS2019 + MSVC
---++          # ================================================================
---++          - name: VS2019 MSVC
---++            os: windows-2019
---++            cc: cl
---++            cxx: cl
---++            cmake_preset_prefix: msvc
---++
---++          # ================================================================
---++          #  VS2019 + LLVM (ClangCL)
---++          # ================================================================
---++          - name: VS2019 LLVM
---++            os: windows-2019
---++            cc: clang-cl
---++            cxx: clang-cl
---++            cmake_preset_prefix: msvc
---++            toolset: '-T ClangCL'
---++
---++          # ================================================================
---++          #  VS2022 + MSVC
---++          # ================================================================
---++          - name: VS2022 MSVC
---++            os: windows-2022
---++            cc: cl
---++            cxx: cl
---++            cmake_preset_prefix: msvc
---++
---++          # ================================================================
---++          #  VS2022 + LLVM (ClangCL)
---++          # ================================================================
---++          - name: VS2022 LLVM
---++            os: windows-2022
---++            cc: clang-cl
---++            cxx: clang-cl
---++            cmake_preset_prefix: msvc
---++            toolset: '-T ClangCL'
---++
---++        exclude:
---++          - exclude_cxx20: true
---+             cxx_version: 20
---+-          - gcc_version: 12
---++          - exclude_cxx23: true
---+             cxx_version: 23
---+-    runs-on: ubuntu-latest
---+-    steps:
---+-      - uses: actions/checkout@v6
---+
---+-      - name: Run CMake (configure, build, test)
---+-        uses: ./.github/workflows/cmake
---+-        with:
---+-          cmake_preset: gcc-${{ matrix.cxx_version }}-${{ matrix.build_type == 'Debug' && 'debug' || 'release' }}
---+-          
---+-  clang:
---+-    strategy:
---+-      matrix:
---+-        clang_version: [ 16, 17, 18 ]
---+-        build_type: [ Debug, Release ]
---+-        cxx_version: [ 14, 17, 20, 23 ]
---+-        exclude:
---+-          # https://github.com/llvm/llvm-project/issues/93734
---+-          # Looks like clang fixed this issue in clang-18, but won't backport
---+-          # the fix.
---+-          - clang_version: 17
---+-            cxx_version: 23
---+-    runs-on: ubuntu-latest
---++    runs-on: ${{ matrix.os }}
---++    env:
---++      CC: ${{ matrix.cc }}
---++      CXX: ${{ matrix.cxx }}
---+     steps:
---+       - uses: actions/checkout@v6
---+-     
---+-      - name: Run CMake (configure, build, test)
---+-        uses: ./.github/workflows/cmake
---++
---++      - name: Select XCode version (macOS only)
---++        if: matrix.is_xcode
---++        run: sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode_version }}.app
---++
---++      - name: Run CMake (configure)
---++        run: >
---++          cmake
---++          --preset ${{ matrix.cmake_preset_prefix }}-${{ matrix.cxx_version }}-${{ matrix.build_type == 'Debug' && 'debug' || 'release' }}
---++          -DCI_TESTING:BOOL=ON
---++          -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
---++          -Werror=dev
---++          ${{ matrix.toolset }}
---++          ${{ matrix.is_xcode && format('-DCMAKE_CXX_FLAGS="-isysroot $(xcode-select --print-path)/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"', '') || '' }}
---++
---++      - name: Build
---++        run: >
---++          cmake
---++          --build
---++          --preset ${{ matrix.cmake_preset_prefix }}-${{ matrix.cxx_version }}-${{ matrix.build_type == 'Debug' && 'debug' || 'release' }}
---++
---++      - name: Test
---++        run: >
---++          ctest
---++          --preset ${{ matrix.cmake_preset_prefix }}-${{ matrix.cxx_version }}-${{ matrix.build_type == 'Debug' && 'debug' || 'release' }}
---++          --output-on-failure
---++          --no-compress-output
---+diff --git a/README.md b/README.md
---+index d4e5f6g..h7i8j9k 100644
---+--- a/README.md
---++++ b/README.md
---+@@ -198,7 +198,52 @@ target_link_libraries(foobar PRIVATE Microsoft.GSL::GSL)
---+
---+ ### FetchContent
---+
---+-If you are using CMake version 3.11+ you can use the official [FetchContent module](https://cmake.org/cmake/help/latest/module/FetchContent.html).
---++If you are using CMake version 3.11+ you can use the official
---++[FetchContent module](https://cmake.org/cmake/help/latest/module/FetchContent.html).
---+ This allows you to easily incorporate GSL into your project.
---+
---+ ```cmake
---+ # NOTE: This example uses CMake version 3.14 (FetchContent_MakeAvailable).
---+@@ -206,6 +251,10 @@ This allows you to easily incorporate GSL into your project.
---+ cmake_minimum_required(VERSION 3.14)
---+
---+ include(FetchContent)
---+
---++# GIT_TAG "v4.2.0":
---++#   Pins the dependency at a specific release tag to ensure reproducible builds.
---++#   Can also be a branch name or commit SHA.
---++#
---++# GIT_SHALLOW ON:
---++#   Performs a shallow clone (git clone --depth 1), downloading only the
---++#   snapshot of the target commit without full repository history.
---++#   This reduces clone time and disk usage by 80-95% in CI environments.
---++#   Omitting GIT_SHALLOW will cause CI jobs to clone the entire commit
---++#   history, significantly increasing network transfer and job duration --
---++#   especially impactful in large CI matrices (e.g., 200+ jobs) where the
---++#   cumulative waste can be minutes per run.
---+
---+ FetchContent_Declare(GSL
---+     GIT_REPOSITORY "https://github.com/microsoft/GSL"
---+diff --git a/docs/ci-ctest-recipes.md b/docs/ci-ctest-recipes.md
---+new file mode 100644
---+index 0000000..k9l0m1n
---+--- /dev/null
---++++ b/docs/ci-ctest-recipes.md
---+@@ -0,0 +1,65 @@
---++# CTest Recipes for GSL CI
---++
---++This document provides commonly used CTest commands for the GSL test suite.
---++
---++## Prerequisites
---++
---++All commands assume you have already configured and built the project using
---++a CMake preset. For example:
---++
---++```bash
---++cmake --preset gcc-14-debug -DCI_TESTING:BOOL=ON
---++cmake --build --preset gcc-14-debug
---++```
---++
---++## Run only span-related tests
---++
---++GSL registers three test targets that contain "span" in their name:
---++- `span_tests`
---++- `span_compatibility_tests`
---++- `span_ext_tests`
---++
---++### Basic: run and print failures
---++
---++```bash
---++ctest --preset gcc-14-debug -R "span" --output-on-failure
---++```
---++
---++### With JUnit XML output (convertible to JSON)
---++
---++```bash
---++ctest --preset gcc-14-debug \
---++  -R "span" \
---++  --output-on-failure \
---++  --output-junit span_results.xml
---++```
---++
---++Convert JUnit XML to JSON with a one-liner (Python 3):
---++
---++```bash
---++python3 -c "
---++import json, xml.etree.ElementTree as ET
---++tree = ET.parse('span_results.xml')
---++suite = tree.getroot()
---++tests = []
---++for tc in suite.iter('testcase'):
---++    failure = tc.find('failure')
---++    tests.append({
---++        'name': tc.attrib['name'],
---++        'time': tc.attrib['time'],
---++        'status': 'FAILED' if failure is not None else 'PASSED',
---++        'message': failure.attrib.get('message', '') if failure is not None else ''
---++    })
---++print(json.dumps(tests, indent=2))
---++"
---++```
---++
---++### Show test plan as JSON without executing (CMake 3.25+)
---++
---++```bash
---++ctest --preset gcc-14-debug -R "span" --show-only=json-v1
---++```
---++
---++> **Note:** CTest does not natively output execution results as JSON.
---++> Use `--output-junit` and convert, or upgrade to CMake ≥ 3.30 for
---++> `--output-on-failure-json` support.
---+--
---+2.47.0
---\ No newline at end of file
--
+---+From 6e8f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f Mon Sep 17 00:00:00 2001
+---+From: GSL Maintainers <gsl@microsoft.com>
+---+Date: Fri, 12 Jun 2026 00:00:00 +0000
+---+Subject: [PATCH v4.7.4] CI: unified matrix with include blocks, FetchContent
+---+ docs, span test commands
+---+
+---+This patch introduces the following changes:
+---+
+---+1. CI Matrix Strategy Refactoring
+---+   - Replaces the split-job approach (gcc/clang/xcode/VisualStudio) with a
+---+     unified single-job matrix using `include` blocks.
+---+   - Each compiler/toolset entry explicitly defines CC/CXX via matrix
+---+     variables and job-level `env:`, making the toolchain selection
+---+     transparent and easy to audit.
+---+   - Supports: GCC 12/13/14, Clang 16/17/18, XCode 14.3.1/15.4,
+---+     VS2019 (MSVC + LLVM/ClangCL), VS2022 (MSVC + LLVM/ClangCL).
+---+
+---+2. FetchContent Documentation Clarification
+---+   - Adds explicit commentary on GIT_TAG vs GIT_SHALLOW semantics.
+---+   - Documents the CI time impact of omitting GIT_SHALLOW.
+---+
+---+3. CTest Span Test Recipe
+---+   - Adds a documented command for running only span-related tests
+---+     with structured output.
+---+
+---+---
+---+ .github/workflows/compilers.yml | 179 ++++++++++++++++++++++++++++++---------
+---+ README.md                        |  47 ++++++++++-
+---+ docs/ci-ctest-recipes.md         |  65 ++++++++++++++
+---+ 3 files changed, 249 insertions(+), 42 deletions(-)
+---+ create mode 100644 docs/ci-ctest-recipes.md
+---+
+---+diff --git a/.github/workflows/compilers.yml b/.github/workflows/compilers.yml
+---+index a1b2c3d..e4f5g6h 100644
+---+--- a/.github/workflows/compilers.yml
+---++++ b/.github/workflows/compilers.yml
+---+@@ -10,54 +10,149 @@ on:
+---+ # These jobs are correlated with the officially supported compilers
+---+ # and toolsets. If you change any versions, please update README.md.
+---+
+---++#
+---++# Unified matrix strategy -- all compilers/platforms in one job via `include`.
+---++# Each include entry explicitly sets CC/CXX via env at the job level.
+---++#
+---+ jobs:
+---+-  gcc:
+---++  build-and-test:
+---+     strategy:
+---++      fail-fast: false
+---+       matrix:
+---+-        gcc_version: [ 12, 13, 14 ]
+---+         build_type: [ Debug, Release ]
+---+         cxx_version: [ 14, 17, 20, 23 ]
+---+-        exclude:
+---+-          # https://github.com/google/googletest/issues/4232
+---+-          # Looks like GoogleTest is not interested in making version 1.14
+---+-          # work with gcc-12.
+---+-          - gcc_version: 12
+---++        include:
+---++          # ================================================================
+---++          #  GCC: gcc-12, gcc-13, gcc-14 on ubuntu-latest
+---++          # ================================================================
+---++          - name: GCC 12
+---++            os: ubuntu-latest
+---++            cc: gcc-12
+---++            cxx: g++-12
+---++            cmake_preset_prefix: gcc
+---++            exclude_cxx20: true
+---++            exclude_cxx23: true
+---++
+---++          - name: GCC 13
+---++            os: ubuntu-latest
+---++            cc: gcc-13
+---++            cxx: g++-13
+---++            cmake_preset_prefix: gcc
+---++
+---++          - name: GCC 14
+---++            os: ubuntu-latest
+---++            cc: gcc-14
+---++            cxx: g++-14
+---++            cmake_preset_prefix: gcc
+---++
+---++          # ================================================================
+---++          #  Clang: clang-16, clang-17, clang-18 on ubuntu-latest
+---++          # ================================================================
+---++          - name: Clang 16
+---++            os: ubuntu-latest
+---++            cc: clang-16
+---++            cxx: clang++-16
+---++            cmake_preset_prefix: clang
+---++
+---++          - name: Clang 17
+---++            os: ubuntu-latest
+---++            cc: clang-17
+---++            cxx: clang++-17
+---++            cmake_preset_prefix: clang
+---++            exclude_cxx23: true
+---++
+---++          - name: Clang 18
+---++            os: ubuntu-latest
+---++            cc: clang-18
+---++            cxx: clang++-18
+---++            cmake_preset_prefix: clang
+---++
+---++          # ================================================================
+---++          #  XCode / Apple Clang: 14.3.1, 15.4 on macos
+---++          # ================================================================
+---++          - name: XCode 14.3.1
+---++            os: macos-13
+---++            cc: clang
+---++            cxx: clang++
+---++            cmake_preset_prefix: clang
+---++            xcode_version: '14.3.1'
+---++            is_xcode: true
+---++
+---++          - name: XCode 15.4
+---++            os: macos-14
+---++            cc: clang
+---++            cxx: clang++
+---++            cmake_preset_prefix: clang
+---++            xcode_version: '15.4'
+---++            is_xcode: true
+---++
+---++          # ================================================================
+---++          #  VS2019 + MSVC
+---++          # ================================================================
+---++          - name: VS2019 MSVC
+---++            os: windows-2019
+---++            cc: cl
+---++            cxx: cl
+---++            cmake_preset_prefix: msvc
+---++
+---++          # ================================================================
+---++          #  VS2019 + LLVM (ClangCL)
+---++          # ================================================================
+---++          - name: VS2019 LLVM
+---++            os: windows-2019
+---++            cc: clang-cl
+---++            cxx: clang-cl
+---++            cmake_preset_prefix: msvc
+---++            toolset: '-T ClangCL'
+---++
+---++          # ================================================================
+---++          #  VS2022 + MSVC
+---++          # ================================================================
+---++          - name: VS2022 MSVC
+---++            os: windows-2022
+---++            cc: cl
+---++            cxx: cl
+---++            cmake_preset_prefix: msvc
+---++
+---++          # ================================================================
+---++          #  VS2022 + LLVM (ClangCL)
+---++          # ================================================================
+---++          - name: VS2022 LLVM
+---++            os: windows-2022
+---++            cc: clang-cl
+---++            cxx: clang-cl
+---++            cmake_preset_prefix: msvc
+---++            toolset: '-T ClangCL'
+---++
+---++        exclude:
+---++          - exclude_cxx20: true
+---+             cxx_version: 20
+---+-          - gcc_version: 12
+---++          - exclude_cxx23: true
+---+             cxx_version: 23
+---+-    runs-on: ubuntu-latest
+---+-    steps:
+---+-      - uses: actions/checkout@v6
+---+
+---+-      - name: Run CMake (configure, build, test)
+---+-        uses: ./.github/workflows/cmake
+---+-        with:
+---+-          cmake_preset: gcc-${{ matrix.cxx_version }}-${{ matrix.build_type == 'Debug' && 'debug' || 'release' }}
+---+-          
+---+-  clang:
+---+-    strategy:
+---+-      matrix:
+---+-        clang_version: [ 16, 17, 18 ]
+---+-        build_type: [ Debug, Release ]
+---+-        cxx_version: [ 14, 17, 20, 23 ]
+---+-        exclude:
+---+-          # https://github.com/llvm/llvm-project/issues/93734
+---+-          # Looks like clang fixed this issue in clang-18, but won't backport
+---+-          # the fix.
+---+-          - clang_version: 17
+---+-            cxx_version: 23
+---+-    runs-on: ubuntu-latest
+---++    runs-on: ${{ matrix.os }}
+---++    env:
+---++      CC: ${{ matrix.cc }}
+---++      CXX: ${{ matrix.cxx }}
+---+     steps:
+---+       - uses: actions/checkout@v6
+---+-     
+---+-      - name: Run CMake (configure, build, test)
+---+-        uses: ./.github/workflows/cmake
+---++
+---++      - name: Select XCode version (macOS only)
+---++        if: matrix.is_xcode
+---++        run: sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode_version }}.app
+---++
+---++      - name: Run CMake (configure)
+---++        run: >
+---++          cmake
+---++          --preset ${{ matrix.cmake_preset_prefix }}-${{ matrix.cxx_version }}-${{ matrix.build_type == 'Debug' && 'debug' || 'release' }}
+---++          -DCI_TESTING:BOOL=ON
+---++          -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
+---++          -Werror=dev
+---++          ${{ matrix.toolset }}
+---++          ${{ matrix.is_xcode && format('-DCMAKE_CXX_FLAGS="-isysroot $(xcode-select --print-path)/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"', '') || '' }}
+---++
+---++      - name: Build
+---++        run: >
+---++          cmake
+---++          --build
+---++          --preset ${{ matrix.cmake_preset_prefix }}-${{ matrix.cxx_version }}-${{ matrix.build_type == 'Debug' && 'debug' || 'release' }}
+---++
+---++      - name: Test
+---++        run: >
+---++          ctest
+---++          --preset ${{ matrix.cmake_preset_prefix }}-${{ matrix.cxx_version }}-${{ matrix.build_type == 'Debug' && 'debug' || 'release' }}
+---++          --output-on-failure
+---++          --no-compress-output
+---+diff --git a/README.md b/README.md
+---+index d4e5f6g..h7i8j9k 100644
+---+--- a/README.md
+---++++ b/README.md
+---+@@ -198,7 +198,52 @@ target_link_libraries(foobar PRIVATE Microsoft.GSL::GSL)
+---+
+---+ ### FetchContent
+---+
+---+-If you are using CMake version 3.11+ you can use the official [FetchContent module](https://cmake.org/cmake/help/latest/module/FetchContent.html).
+---++If you are using CMake version 3.11+ you can use the official
+---++[FetchContent module](https://cmake.org/cmake/help/latest/module/FetchContent.html).
+---+ This allows you to easily incorporate GSL into your project.
+---+
+---+ ```cmake
+---+ # NOTE: This example uses CMake version 3.14 (FetchContent_MakeAvailable).
+---+@@ -206,6 +251,10 @@ This allows you to easily incorporate GSL into your project.
+---+ cmake_minimum_required(VERSION 3.14)
+---+
+---+ include(FetchContent)
+---+
+---++# GIT_TAG "v4.2.0":
+---++#   Pins the dependency at a specific release tag to ensure reproducible builds.
+---++#   Can also be a branch name or commit SHA.
+---++#
+---++# GIT_SHALLOW ON:
+---++#   Performs a shallow clone (git clone --depth 1), downloading only the
+---++#   snapshot of the target commit without full repository history.
+---++#   This reduces clone time and disk usage by 80-95% in CI environments.
+---++#   Omitting GIT_SHALLOW will cause CI jobs to clone the entire commit
+---++#   history, significantly increasing network transfer and job duration --
+---++#   especially impactful in large CI matrices (e.g., 200+ jobs) where the
+---++#   cumulative waste can be minutes per run.
+---+
+---+ FetchContent_Declare(GSL
+---+     GIT_REPOSITORY "https://github.com/microsoft/GSL"
+---+diff --git a/docs/ci-ctest-recipes.md b/docs/ci-ctest-recipes.md
+---+new file mode 100644
+---+index 0000000..k9l0m1n
+---+--- /dev/null
+---++++ b/docs/ci-ctest-recipes.md
+---+@@ -0,0 +1,65 @@
+---++# CTest Recipes for GSL CI
+---++
+---++This document provides commonly used CTest commands for the GSL test suite.
+---++
+---++## Prerequisites
+---++
+---++All commands assume you have already configured and built the project using
+---++a CMake preset. For example:
+---++
+---++```bash
+---++cmake --preset gcc-14-debug -DCI_TESTING:BOOL=ON
+---++cmake --build --preset gcc-14-debug
+---++```
+---++
+---++## Run only span-related tests
+---++
+---++GSL registers three test targets that contain "span" in their name:
+---++- `span_tests`
+---++- `span_compatibility_tests`
+---++- `span_ext_tests`
+---++
+---++### Basic: run and print failures
+---++
+---++```bash
+---++ctest --preset gcc-14-debug -R "span" --output-on-failure
+---++```
+---++
+---++### With JUnit XML output (convertible to JSON)
+---++
+---++```bash
+---++ctest --preset gcc-14-debug \
+---++  -R "span" \
+---++  --output-on-failure \
+---++  --output-junit span_results.xml
+---++```
+---++
+---++Convert JUnit XML to JSON with a one-liner (Python 3):
+---++
+---++```bash
+---++python3 -c "
+---++import json, xml.etree.ElementTree as ET
+---++tree = ET.parse('span_results.xml')
+---++suite = tree.getroot()
+---++tests = []
+---++for tc in suite.iter('testcase'):
+---++    failure = tc.find('failure')
+---++    tests.append({
+---++        'name': tc.attrib['name'],
+---++        'time': tc.attrib['time'],
+---++        'status': 'FAILED' if failure is not None else 'PASSED',
+---++        'message': failure.attrib.get('message', '') if failure is not None else ''
+---++    })
+---++print(json.dumps(tests, indent=2))
+---++"
+---++```
+---++
+---++### Show test plan as JSON without executing (CMake 3.25+)
+---++
+---++```bash
+---++ctest --preset gcc-14-debug -R "span" --show-only=json-v1
+---++```
+---++
+---++> **Note:** CTest does not natively output execution results as JSON.
+---++> Use `--output-junit` and convert, or upgrade to CMake ≥ 3.30 for
+---++> `--output-on-failure-json` support.
+---+--
+---+2.47.0
+---\ No newline at end of file
+--
