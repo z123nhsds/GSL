@@ -1,0 +1,194 @@
+name: CI Matrix
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+#
+# Unified matrix strategy -- all compilers/platforms in one job via `include`.
+#
+# Each include entry explicitly defines CC/CXX via env at the job level,
+# so the toolchain selection is transparent and auditable per-entry.
+#
+# The matrix generates (compiler_entry_count × 2 build_types × 4 cxx_versions)
+# job combinations, reduced by the `exclude` block for known incompatibilities.
+#
+# Compiler coverage:
+#   GCC 12, 13, 14          -- ubuntu-latest
+#   Clang 16, 17, 18        -- ubuntu-latest
+#   XCode 14.3.1, 15.4      -- macos-13 / macos-14 (Apple Clang)
+#   VS2019 MSVC + ClangCL   -- windows-2019
+#   VS2022 MSVC + ClangCL   -- windows-2022
+#
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [ Debug, Release ]
+        cxx_version: [ 14, 17, 20, 23 ]
+        include:
+          # ================================================================
+          #  GCC: gcc-12, gcc-13, gcc-14 on ubuntu-latest
+          # ================================================================
+          - name: GCC 12
+            os: ubuntu-latest
+            cc: gcc-12
+            cxx: g++-12
+            cmake_preset_prefix: gcc
+            exclude_cxx20: true
+            exclude_cxx23: true
+
+          - name: GCC 13
+            os: ubuntu-latest
+            cc: gcc-13
+            cxx: g++-13
+            cmake_preset_prefix: gcc
+
+          - name: GCC 14
+            os: ubuntu-latest
+            cc: gcc-14
+            cxx: g++-14
+            cmake_preset_prefix: gcc
+
+          # ================================================================
+          #  Clang: clang-16, clang-17, clang-18 on ubuntu-latest
+          # ================================================================
+          - name: Clang 16
+            os: ubuntu-latest
+            cc: clang-16
+            cxx: clang++-16
+            cmake_preset_prefix: clang
+
+          - name: Clang 17
+            os: ubuntu-latest
+            cc: clang-17
+            cxx: clang++-17
+            cmake_preset_prefix: clang
+            exclude_cxx23: true
+
+          - name: Clang 18
+            os: ubuntu-latest
+            cc: clang-18
+            cxx: clang++-18
+            cmake_preset_prefix: clang
+
+          # ================================================================
+          #  XCode / Apple Clang: 14.3.1, 15.4 on macos
+          #
+          #  DEVELOPER_DIR is set as a job-level env var so that all cmake/
+          #  ctest invocations within the step automatically use the correct
+          #  XCode toolchain.  This avoids the need for sudo xcode-select.
+          # ================================================================
+          - name: XCode 14.3.1
+            os: macos-13
+            cc: clang
+            cxx: clang++
+            cmake_preset_prefix: clang
+            xcode_version: '14.3.1'
+            is_xcode: true
+
+          - name: XCode 15.4
+            os: macos-14
+            cc: clang
+            cxx: clang++
+            cmake_preset_prefix: clang
+            xcode_version: '15.4'
+            is_xcode: true
+
+          # ================================================================
+          #  VS2019 + MSVC
+          # ================================================================
+          - name: VS2019 MSVC
+            os: windows-2019
+            cc: cl
+            cxx: cl
+            cmake_preset_prefix: msvc
+            generator: 'Visual Studio 16 2019'
+
+          # ================================================================
+          #  VS2019 + LLVM (ClangCL)
+          # ================================================================
+          - name: VS2019 LLVM
+            os: windows-2019
+            cc: clang-cl
+            cxx: clang-cl
+            cmake_preset_prefix: msvc
+            generator: 'Visual Studio 16 2019'
+            toolset: '-T ClangCL'
+
+          # ================================================================
+          #  VS2022 + MSVC
+          # ================================================================
+          - name: VS2022 MSVC
+            os: windows-2022
+            cc: cl
+            cxx: cl
+            cmake_preset_prefix: msvc
+            generator: 'Visual Studio 17 2022'
+
+          # ================================================================
+          #  VS2022 + LLVM (ClangCL)
+          # ================================================================
+          - name: VS2022 LLVM
+            os: windows-2022
+            cc: clang-cl
+            cxx: clang-cl
+            cmake_preset_prefix: msvc
+            generator: 'Visual Studio 17 2022'
+            toolset: '-T ClangCL'
+
+        exclude:
+          - exclude_cxx20: true
+            cxx_version: 20
+          - exclude_cxx23: true
+            cxx_version: 23
+
+    runs-on: ${{ matrix.os }}
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
+      DEVELOPER_DIR: ${{ matrix.is_xcode && format('/Applications/Xcode_{0}.app/Contents/Developer', matrix.xcode_version) || '' }}
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Select XCode version (macOS only)
+        if: matrix.is_xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode_version }}.app
+          echo "DEVELOPER_DIR=/Applications/Xcode_${{ matrix.xcode_version }}.app/Contents/Developer" >> $GITHUB_ENV
+
+      - name: Configure CMake
+        run: >
+          cmake
+          --preset ${{ matrix.cmake_preset_prefix }}-${{ matrix.cxx_version }}-${{ matrix.build_type == 'Debug' && 'debug' || 'release' }}
+          -DCI_TESTING:BOOL=ON
+          -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
+          -Werror=dev
+          ${{ matrix.toolset }}
+          ${{ matrix.is_xcode && format('-DCMAKE_CXX_FLAGS="-isysroot $(xcode-select --print-path)/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"', '') || '' }}
+        shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
+
+      - name: Build
+        run: >
+          cmake
+          --build
+          --preset ${{ matrix.cmake_preset_prefix }}-${{ matrix.cxx_version }}-${{ matrix.build_type == 'Debug' && 'debug' || 'release' }}
+          ${{ matrix.build_type == 'Release' && '--config Release' || '--config Debug' }}
+        shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
+
+      - name: Test
+        run: >
+          ctest
+          --preset ${{ matrix.cmake_preset_prefix }}-${{ matrix.cxx_version }}-${{ matrix.build_type == 'Debug' && 'debug' || 'release' }}
+          --output-on-failure
+          --no-compress-output
+          ${{ matrix.build_type == 'Release' && '-C Release' || '-C Debug' }}
+        shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
