@@ -5,17 +5,6 @@ project(GSL VERSION 4.2.0 LANGUAGES CXX)
 add_library(GSL INTERFACE)
 add_library(Microsoft.GSL::GSL ALIAS GSL)
 
-# https://cmake.org/cmake/help/latest/variable/PROJECT_IS_TOP_LEVEL.html
-string(COMPARE EQUAL ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR} PROJECT_IS_TOP_LEVEL)
-
-option(GSL_INSTALL "Generate and install GSL target" ${PROJECT_IS_TOP_LEVEL})
-option(GSL_TEST "Build and perform GSL tests" ${PROJECT_IS_TOP_LEVEL})
-
-# The implementation generally assumes a platform that implements C++14 support
-target_compile_features(GSL INTERFACE "cxx_std_14")
-
-# Setup include directory
-add_subdirectory(include)
 
 target_sources(GSL INTERFACE $<BUILD_INTERFACE:${GSL_SOURCE_DIR}/GSL.natvis>)
 
