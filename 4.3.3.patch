@@ -1,24 +1,380 @@
-diff --git a/4.3.3.patch b/4.3.3.patch
-new file mode 100644
-index 0000000..e69de29
-diff --git a/git_log.py b/git_log.py
-new file mode 100644
-index 0000000..a61e66d
---- /dev/null
-+++ b/git_log.py
-@@ -0,0 +1,6 @@
-+import subprocess
-+try:
-+    result = subprocess.run(['git', 'log', '-p', '-S', 'space'], capture_output=True, text=True)
-+    print(result.stdout[:2000])
-+except Exception as e:
-+    print(e)
-diff --git a/run_git.py b/run_git.py
-new file mode 100644
-index 0000000..d285b36
---- /dev/null
-+++ b/run_git.py
-@@ -0,0 +1,3 @@
-+import os
-+with open('/app/GSL/git_output.txt', 'w') as f:
-+    f.write(os.popen('git log -n 3').read())
+diff --git a/include/gsl/algorithm b/include/gsl/algorithm
+index 1234567..89abcdef 100644
+--- a/include/gsl/algorithm
++++ b/include/gsl/algorithm
+@@ -51,7 +51,7 @@ namespace gsl
+     // copy
+     //
+ 
+-    GSL_SUPPRESS(stl.1) // NO-FORMAT: attribute
++    GSL_SUPPRESS("stl.1") // NO-FORMAT: attribute
+     template <class SrcElementType, std::size_t SrcExtent, class DestElementType,
+               std::size_t DestExtent>
+     void copy(span<SrcElementType, SrcExtent> src, span<DestElementType, DestExtent> dest)
+diff --git a/include/gsl/assert b/include/gsl/assert
+index 1234567..89abcdef 100644
+--- a/include/gsl/assert
++++ b/include/gsl/assert
+@@ -46,12 +46,12 @@
+ // Hopefully temporary until suppression standardization occurs
+ //
+ #if defined(__clang__)
+-#define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
++#define GSL_SUPPRESS(x) [[gsl::suppress(x)]]
+ #elif defined(_MSC_VER) && _MSC_VER >= 1950
+ // Visual Studio versions after 2022 (_MSC_VER > 1944) support the justification message.
+-#define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
++#define GSL_SUPPRESS(x) [[gsl::suppress(x)]]
+ #elif defined(_MSC_VER) && !defined(__INTEL_COMPILER) && !defined(__NVCC__)
+-#define GSL_SUPPRESS(x) [[gsl::suppress(x)]]
++#define GSL_SUPPRESS(x)
+ #else
+ #define GSL_SUPPRESS(x)
+ #endif // defined(__clang__)
+@@ -94,7 +94,7 @@ namespace details
+     typedef void(__cdecl* terminate_handler)();
+ 
+     // clang-format off
+-    GSL_SUPPRESS(f.6) // NO-FORMAT: attribute
++    GSL_SUPPRESS("f.6") // NO-FORMAT: attribute
+     // clang-format on
+     [[noreturn]] inline void __cdecl default_terminate_handler()
+     {
+diff --git a/include/gsl/byte b/include/gsl/byte
+index 1234567..89abcdef 100644
+--- a/include/gsl/byte
++++ b/include/gsl/byte
+@@ -173,7 +173,7 @@ constexpr T to_integer(gsl::impl::byte b) noexcept
+ 
+ template <class T>
+ // clang-format off
+-// GSL_SUPPRESS(type.4) // NO-FORMAT: attribute // TODO: suppression does not work
++// GSL_SUPPRESS("type.4") // NO-FORMAT: attribute // TODO: suppression does not work
+ constexpr gsl::impl::byte to_byte(T t) noexcept
+ {
+     static_assert(std::is_same<T, unsigned char>::value,
+diff --git a/include/gsl/narrow b/include/gsl/narrow
+index 1234567..89abcdef 100644
+--- a/include/gsl/narrow
++++ b/include/gsl/narrow
+@@ -29,8 +29,8 @@ namespace gsl
+ 
+ template <class T, class U>
+ // clang-format off
+-GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
+-GSL_SUPPRESS(es.46) // NO-FORMAT: attribute // The warning suggests that a floating->unsigned conversion can occur
++GSL_SUPPRESS("type.1") // NO-FORMAT: attribute
++GSL_SUPPRESS("es.46") // NO-FORMAT: attribute // The warning suggests that a floating->unsigned conversion can occur
+ // clang-format on
+ constexpr U narrow_cast(T t) noexcept
+ {
+@@ -40,9 +40,9 @@ constexpr U narrow_cast(T t) noexcept
+ 
+ template <class T, class U>
+ // clang-format off
+-GSL_SUPPRESS(es.103) // NO-FORMAT: attribute // don't overflow
+-GSL_SUPPRESS(es.104) // NO-FORMAT: attribute // don't underflow
+-GSL_SUPPRESS(p.2) // NO-FORMAT: attribute // don't rely on undefined behavior
++GSL_SUPPRESS("es.103") // NO-FORMAT: attribute // don't overflow
++GSL_SUPPRESS("es.104") // NO-FORMAT: attribute // don't underflow
++GSL_SUPPRESS("p.2") // NO-FORMAT: attribute // don't rely on undefined behavior
+ // clang-format on
+ constexpr T narrow(U u)
+ {
+@@ -65,7 +65,7 @@ constexpr T narrow(U u)
+ 
+ template <class T, class U, typename std::enable_if<!std::is_arithmetic<T>::value>::type* = nullptr>
+ // clang-format off
+-GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
++GSL_SUPPRESS("type.1") // NO-FORMAT: attribute
+     // clang-format on
+     constexpr T narrow(U u)
+ {
+diff --git a/include/gsl/span b/include/gsl/span
+index 1234567..89abcdef 100644
+--- a/include/gsl/span
++++ b/include/gsl/span
+@@ -164,7 +164,7 @@ public:
+         constexpr reference operator*() const noexcept
+         {
+             Expects(begin_ && end_);
+-            GSL_SUPPRESS(bounds.1) // NO-FORMAT: attribute
++            GSL_SUPPRESS("bounds.1") // NO-FORMAT: attribute
+             Expects(begin_ <= current_ && current_ < end_);
+             return *current_;
+         }
+@@ -197,7 +197,7 @@ public:
+         constexpr reference operator*() const noexcept
+         {
+             Expects(begin_ && end_);
+-            GSL_SUPPRESS(bounds.1) // NO-FORMAT: attribute
++            GSL_SUPPRESS("bounds.1") // NO-FORMAT: attribute
+             Expects(begin_ <= current_ && current_ < end_);
+             return *current_;
+         }
+@@ -221,7 +221,7 @@ public:
+         constexpr span_iterator& operator-=(const difference_type n) noexcept
+         {
+             if (n < 0) Expects(end_ - current_ >= -n);
+-            GSL_SUPPRESS(bounds.1)
++            GSL_SUPPRESS("bounds.1")
+             current_ -= n;
+             return *this;
+         }
+@@ -316,7 +316,7 @@ public:
+     constexpr reference operator[](const index idx) const noexcept
+     {
+         // clang-format off
+-        GSL_SUPPRESS(bounds.1) // NO-FORMAT: attribute
++        GSL_SUPPRESS("bounds.1") // NO-FORMAT: attribute
+         // clang-format on
+         return data()[idx];
+     }
+@@ -333,7 +333,7 @@ public:
+     constexpr reference operator()(const index idx) const noexcept
+     {
+         // clang-format off
+-        GSL_SUPPRESS(con.3) // NO-FORMAT: attribute // TODO: false positive
++        GSL_SUPPRESS("con.3") // NO-FORMAT: attribute // TODO: false positive
+         // clang-format on
+         return data()[idx];
+     }
+@@ -590,7 +590,7 @@ public:
+     constexpr reference operator[](const index idx) const noexcept
+     {
+         Expects(idx >= 0 && idx < storage_.size());
+-        GSL_SUPPRESS(bounds.1) // NO-FORMAT: attribute
++        GSL_SUPPRESS("bounds.1") // NO-FORMAT: attribute
+         return storage_.data()[idx];
+     }
+ 
+@@ -602,7 +602,7 @@ public:
+     constexpr reference operator()(const index idx) const noexcept
+     {
+         Expects(idx >= 0 && idx < storage_.size());
+-        GSL_SUPPRESS(bounds.1) // NO-FORMAT: attribute
++        GSL_SUPPRESS("bounds.1") // NO-FORMAT: attribute
+         return storage_.data()[idx];
+     }
+ 
+@@ -643,7 +643,7 @@ public:
+     constexpr span<element_type, dynamic_extent> first(const index count) const noexcept
+     {
+         Expects(count >= 0 && count <= storage_.size());
+-        GSL_SUPPRESS(bounds.1) // NO-FORMAT: attribute
++        GSL_SUPPRESS("bounds.1") // NO-FORMAT: attribute
+         return {storage_.data(), count};
+     }
+ 
+@@ -670,7 +670,7 @@ public:
+     {
+         Expects(count >= 0 && count <= storage_.size());
+         // clang-format off
+-        GSL_SUPPRESS(bounds.1) // NO-FORMAT: attribute
++        GSL_SUPPRESS("bounds.1") // NO-FORMAT: attribute
+         // clang-format on
+         return {storage_.data() + (storage_.size() - count), count};
+     }
+@@ -679,7 +679,7 @@ public:
+     constexpr span<element_type, dynamic_extent> subspan(const index offset) const noexcept
+     {
+         Expects(offset >= 0 && offset <= storage_.size());
+-        GSL_SUPPRESS(bounds.1) // NO-FORMAT: attribute
++        GSL_SUPPRESS("bounds.1") // NO-FORMAT: attribute
+         return {storage_.data() + offset, storage_.size() - offset};
+     }
+ 
+@@ -694,7 +694,7 @@ public:
+         Expects(offset >= 0 && offset <= storage_.size());
+         Expects(count == dynamic_extent || (count >= 0 && count <= storage_.size() - offset));
+         // clang-format off
+-        GSL_SUPPRESS(bounds.1) // NO-FORMAT: attribute
++        GSL_SUPPRESS("bounds.1") // NO-FORMAT: attribute
+         // clang-format on
+         return {storage_.data() + offset,
+                 count == dynamic_extent ? (storage_.size() - offset) : count};
+@@ -753,7 +753,7 @@ constexpr span<const gsl::impl::byte, dynamic_extent> as_bytes(span<ElementType,
+     if (storage_.size() == 0) return {nullptr, nullptr};
+ 
+     // clang-format off
+-    GSL_SUPPRESS(bounds.1) // NO-FORMAT: attribute
++    GSL_SUPPRESS("bounds.1") // NO-FORMAT: attribute
+     // clang-format on
+     return {reinterpret_cast<const gsl::impl::byte*>(storage_.data()),
+             narrow_cast<std::size_t>(storage_.size()) * sizeof(element_type)};
+@@ -830,7 +830,7 @@ public:
+     constexpr reference operator[](const index idx) const noexcept
+     {
+         Expects(idx >= 0 && idx < storage_.size());
+-        GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
++        GSL_SUPPRESS("type.1") // NO-FORMAT: attribute
+         return storage_.data()[idx];
+     }
+ 
+@@ -843,7 +843,7 @@ public:
+     constexpr reference operator()(const index idx) const noexcept
+     {
+         Expects(idx >= 0 && idx < storage_.size());
+-        GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
++        GSL_SUPPRESS("type.1") // NO-FORMAT: attribute
+         return storage_.data()[idx];
+     }
+diff --git a/include/gsl/util b/include/gsl/util
+index 1234567..89abcdef 100644
+--- a/include/gsl/util
++++ b/include/gsl/util
+@@ -128,7 +128,7 @@ namespace gsl
+ 
+     template <class T, class U>
+     // clang-format off
+-GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
++GSL_SUPPRESS("type.1") // NO-FORMAT: attribute
+     // clang-format on
+     GSL_NODISCARD constexpr auto narrow_cast(U&& u) noexcept -> decltype(static_cast<T>(std::forward<U>(u)))
+     {
+@@ -140,8 +140,8 @@ GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
+ 
+     template <class T, class U>
+     // clang-format off
+-GSL_SUPPRESS(bounds.4) // NO-FORMAT: attribute
+-GSL_SUPPRESS(bounds.2) // NO-FORMAT: attribute
++GSL_SUPPRESS("bounds.4") // NO-FORMAT: attribute
++GSL_SUPPRESS("bounds.2") // NO-FORMAT: attribute
+     // clang-format on
+     GSL_NODISCARD constexpr T& at(T (&arr)[U], const index i)
+     {
+@@ -152,8 +152,8 @@ GSL_SUPPRESS(bounds.2) // NO-FORMAT: attribute
+ 
+     template <class Container>
+     // clang-format off
+-GSL_SUPPRESS(bounds.4) // NO-FORMAT: attribute
+-GSL_SUPPRESS(bounds.2) // NO-FORMAT: attribute
++GSL_SUPPRESS("bounds.4") // NO-FORMAT: attribute
++GSL_SUPPRESS("bounds.2") // NO-FORMAT: attribute
+     // clang-format on
+     GSL_NODISCARD constexpr auto at(Container& cont, const index i) -> decltype(cont[cont.size()])
+     {
+@@ -164,7 +164,7 @@ GSL_SUPPRESS(bounds.2) // NO-FORMAT: attribute
+ 
+     template <class T>
+     // clang-format off
+-GSL_SUPPRESS(bounds.1) // NO-FORMAT: attribute
++GSL_SUPPRESS("bounds.1") // NO-FORMAT: attribute
+     // clang-format on
+     GSL_NODISCARD constexpr T& at(std::initializer_list<T> cont, const index i)
+     {
+diff --git a/tests/notnull_tests.cpp b/tests/notnull_tests.cpp
+index 1234567..89abcdef 100644
+--- a/tests/notnull_tests.cpp
++++ b/tests/notnull_tests.cpp
+@@ -70,7 +70,7 @@ template <typename T, typename U>
+ std::string operator==(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
+ {
+     // clang-format off
+-    GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
++    GSL_SUPPRESS("type.1") // NO-FORMAT: attribute
+     // clang-format on
+     return reinterpret_cast<const void*>(lhs.p_) == reinterpret_cast<const void*>(rhs.p_) ? "true"
+                                                                                           : "false";
+@@ -80,7 +80,7 @@ template <typename T, typename U>
+ std::string operator!=(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
+ {
+     // clang-format off
+-    GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
++    GSL_SUPPRESS("type.1") // NO-FORMAT: attribute
+     // clang-format on
+     return reinterpret_cast<const void*>(lhs.p_) != reinterpret_cast<const void*>(rhs.p_) ? "true"
+                                                                                           : "false";
+@@ -90,7 +90,7 @@ template <typename T, typename U>
+ std::string operator<(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
+ {
+     // clang-format off
+-    GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
++    GSL_SUPPRESS("type.1") // NO-FORMAT: attribute
+     // clang-format on
+     return reinterpret_cast<const void*>(lhs.p_) < reinterpret_cast<const void*>(rhs.p_) ? "true"
+                                                                                          : "false";
+@@ -100,7 +100,7 @@ template <typename T, typename U>
+ std::string operator>(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
+ {
+     // clang-format off
+-    GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
++    GSL_SUPPRESS("type.1") // NO-FORMAT: attribute
+     // clang-format on
+     return reinterpret_cast<const void*>(lhs.p_) > reinterpret_cast<const void*>(rhs.p_) ? "true"
+                                                                                          : "false";
+@@ -110,7 +110,7 @@ template <typename T, typename U>
+ std::string operator<=(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
+ {
+     // clang-format off
+-    GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
++    GSL_SUPPRESS("type.1") // NO-FORMAT: attribute
+     // clang-format on
+     return reinterpret_cast<const void*>(lhs.p_) <= reinterpret_cast<const void*>(rhs.p_) ? "true"
+                                                                                           : "false";
+@@ -120,7 +120,7 @@ template <typename T, typename U>
+ std::string operator>=(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
+ {
+     // clang-format off
+-    GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
++    GSL_SUPPRESS("type.1") // NO-FORMAT: attribute
+     // clang-format on
+     return reinterpret_cast<const void*>(lhs.p_) >= reinterpret_cast<const void*>(rhs.p_) ? "true"
+                                                                                           : "false";
+@@ -138,11 +138,11 @@ struct MyBase
+     }
+ 
+     // clang-format off
+-GSL_SUPPRESS(f.4) // NO-FORMAT: attribute
++GSL_SUPPRESS("f.4") // NO-FORMAT: attribute
+     // clang-format on
+     bool is_null() const { return p_ == nullptr; }
+     // clang-format off
+-GSL_SUPPRESS(f.4) // NO-FORMAT: attribute
++GSL_SUPPRESS("f.4") // NO-FORMAT: attribute
+     // clang-format on
+     T* get() const { return p_; }
+ 
+diff --git a/tests/owner_tests.cpp b/tests/owner_tests.cpp
+index 1234567..89abcdef 100644
+--- a/tests/owner_tests.cpp
++++ b/tests/owner_tests.cpp
+@@ -21,7 +21,7 @@
+ 
+ using namespace gsl;
+ 
+-GSL_SUPPRESS(f.23) // NO-FORMAT: attribute
++GSL_SUPPRESS("f.23") // NO-FORMAT: attribute
+ void f(int* i) { *i += 1; }
+ 
+ TEST(owner_tests, basic_test)
+diff --git a/tests/strict_notnull_tests.cpp b/tests/strict_notnull_tests.cpp
+index 1234567..89abcdef 100644
+--- a/tests/strict_notnull_tests.cpp
++++ b/tests/strict_notnull_tests.cpp
+@@ -42,21 +42,21 @@ struct MyBase
+     }
+ 
+     // clang-format off
+-GSL_SUPPRESS(f.4) // NO-FORMAT: attribute
++GSL_SUPPRESS("f.4") // NO-FORMAT: attribute
+     // clang-format on
+     bool is_null() const { return p_ == nullptr; }
+     // clang-format off
+-GSL_SUPPRESS(f.4) // NO-FORMAT: attribute
++GSL_SUPPRESS("f.4") // NO-FORMAT: attribute
+     // clang-format on
+     T* get() const { return p_; }
+ 
+     // clang-format off
+-GSL_SUPPRESS(f.4) // NO-FORMAT: attribute
++GSL_SUPPRESS("f.4") // NO-FORMAT: attribute
+     // clang-format on
+     bool operator==(const CustomPtr<T>& other) const { return p_ == other.p_; }
+ 
+     // clang-format off
+-GSL_SUPPRESS(f.4) // NO-FORMAT: attribute
++GSL_SUPPRESS("f.4") // NO-FORMAT: attribute
+     // clang-format on
+     bool operator!=(const CustomPtr<T>& other) const { return p_ != other.p_; }
+ };
