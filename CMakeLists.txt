@@ -5,6 +5,17 @@ project(GSL VERSION 4.2.0 LANGUAGES CXX)
 add_library(GSL INTERFACE)
 add_library(Microsoft.GSL::GSL ALIAS GSL)
 
+# Pin a reproducible version of googletest for CI builds. Using
+# ``GIT_SHALLOW ON`` avoids cloning the full history and keeps CI fast;
+# ``GIT_TAG v4.2.0`` pins the checkout to the same tag as the GSL release.
+include(FetchContent)
+FetchContent_Declare(googletest
+  GIT_REPOSITORY https://github.com/google/googletest.git
+  GIT_TAG        v4.2.0
+  GIT_SHALLOW    ON
+)
+FetchContent_MakeAvailable(googletest)
+
 # https://cmake.org/cmake/help/latest/variable/PROJECT_IS_TOP_LEVEL.html
 string(COMPARE EQUAL ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_SOURCE_DIR} PROJECT_IS_TOP_LEVEL)
 
