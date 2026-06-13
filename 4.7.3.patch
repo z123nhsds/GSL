@@ -1,75 +1,95 @@
-strategy:
-  matrix:
-    include:
-      # GCC
-      - { compiler: gcc, version: 12, cc: gcc-12, cxx: g++-12 }
-      - { compiler: gcc, version: 13, cc: gcc-13, cxx: g++-13 }
-      - { compiler: gcc, version: 14, cc: gcc-14, cxx: g++-14 }
-      
-      # Clang
-      - { compiler: clang, version: 16, cc: clang-16, cxx: clang++-16 }
-      - { compiler: clang, version: 17, cc: clang-17, cxx: clang++-17 }
-      - { compiler: clang, version: 18, cc: clang-18, cxx: clang++-18 }
-      
-      # XCode (Apple Clang)
-      - { compiler: xcode, version: '14.3.1', cc: clang, cxx: clang++ }
-      - { compiler: xcode, version: '15.4', cc: clang, cxx: clang++ }
-      
-      # Visual Studio (MSVC)
-      - { compiler: msvc, version: 2019, cc: cl, cxx: cl }
-      - { compiler: msvc, version: 2022, cc: cl, cxx: cl }
-      
-      # Visual Studio (LLVM / Clang-CL)
-      - { compiler: llvm, version: 2019, cc: clang-cl, cxx: clang-cl }
-      - { compiler: llvm, version: 2022, cc: clang-cl, cxx: clang-cl }
-      diff --git a/.github/workflows/compilers.yml b/.github/workflows/compilers.yml
---- a/.github/workflows/compilers.yml
-+++ b/.github/workflows/compilers.yml
-@@ -14,2 +14,25 @@
- jobs:
-+  build_and_test:
-+    strategy:
-+      matrix:
-+        include:
-+          # GCC
-+          - { compiler: gcc, version: 12, cc: gcc-12, cxx: g++-12, os: ubuntu-latest }
-+          - { compiler: gcc, version: 13, cc: gcc-13, cxx: g++-13, os: ubuntu-latest }
-+          - { compiler: gcc, version: 14, cc: gcc-14, cxx: g++-14, os: ubuntu-latest }
-+          # Clang
-+          - { compiler: clang, version: 16, cc: clang-16, cxx: clang++-16, os: ubuntu-latest }
-+          - { compiler: clang, version: 17, cc: clang-17, cxx: clang++-17, os: ubuntu-latest }
-+          - { compiler: clang, version: 18, cc: clang-18, cxx: clang++-18, os: ubuntu-latest }
-+          # XCode
-+          - { compiler: xcode, version: '14.3.1', cc: clang, cxx: clang++, os: macos-latest }
-+          - { compiler: xcode, version: '15.4', cc: clang, cxx: clang++, os: macos-latest }
-+          # Visual Studio (MSVC)
-+          - { compiler: msvc, version: 2019, cc: cl, cxx: cl, os: windows-2019 }
-+          - { compiler: msvc, version: 2022, cc: cl, cxx: cl, os: windows-2022 }
-+          # Visual Studio (LLVM / Clang-CL)
-+          - { compiler: llvm, version: 2019, cc: clang-cl, cxx: clang-cl, os: windows-2019 }
-+          - { compiler: llvm, version: 2022, cc: clang-cl, cxx: clang-cl, os: windows-2022 }
-+    runs-on: ${{ matrix.os }}
-+    steps:
-+      - uses: actions/checkout@v6
+-strategy:
+-  matrix:
+-    include:
+-      # GCC
+-      - { compiler: gcc, version: 12, cc: gcc-12, cxx: g++-12 }
+-      - { compiler: gcc, version: 13, cc: gcc-13, cxx: g++-13 }
+-      - { compiler: gcc, version: 14, cc: gcc-14, cxx: g++-14 }
+-      
+-      # Clang
+-      - { compiler: clang, version: 16, cc: clang-16, cxx: clang++-16 }
+-      - { compiler: clang, version: 17, cc: clang-17, cxx: clang++-17 }
+-      - { compiler: clang, version: 18, cc: clang-18, cxx: clang++-18 }
+-      
+-      # XCode (Apple Clang)
+-      - { compiler: xcode, version: '14.3.1', cc: clang, cxx: clang++ }
+-      - { compiler: xcode, version: '15.4', cc: clang, cxx: clang++ }
+-      
+-      # Visual Studio (MSVC)
+-      - { compiler: msvc, version: 2019, cc: cl, cxx: cl }
+-      - { compiler: msvc, version: 2022, cc: cl, cxx: cl }
+-      
+-      # Visual Studio (LLVM / Clang-CL)
+-      - { compiler: llvm, version: 2019, cc: clang-cl, cxx: clang-cl }
+-      - { compiler: llvm, version: 2022, cc: clang-cl, cxx: clang-cl }
+-      diff --git a/.github/workflows/compilers.yml b/.github/workflows/compilers.yml
+---- a/.github/workflows/compilers.yml
+-+++ b/.github/workflows/compilers.yml
+-@@ -14,2 +14,25 @@
+- jobs:
+-+  build_and_test:
+-+    strategy:
+-+      matrix:
+-+        include:
+-+          # GCC
+-+          - { compiler: gcc, version: 12, cc: gcc-12, cxx: g++-12, os: ubuntu-latest }
+-+          - { compiler: gcc, version: 13, cc: gcc-13, cxx: g++-13, os: ubuntu-latest }
+-+          - { compiler: gcc, version: 14, cc: gcc-14, cxx: g++-14, os: ubuntu-latest }
+-+          # Clang
+-+          - { compiler: clang, version: 16, cc: clang-16, cxx: clang++-16, os: ubuntu-latest }
+-+          - { compiler: clang, version: 17, cc: clang-17, cxx: clang++-17, os: ubuntu-latest }
+-+          - { compiler: clang, version: 18, cc: clang-18, cxx: clang++-18, os: ubuntu-latest }
+-+          # XCode
+-+          - { compiler: xcode, version: '14.3.1', cc: clang, cxx: clang++, os: macos-latest }
+-+          - { compiler: xcode, version: '15.4', cc: clang, cxx: clang++, os: macos-latest }
+-+          # Visual Studio (MSVC)
+-+          - { compiler: msvc, version: 2019, cc: cl, cxx: cl, os: windows-2019 }
+-+          - { compiler: msvc, version: 2022, cc: cl, cxx: cl, os: windows-2022 }
+-+          # Visual Studio (LLVM / Clang-CL)
+-+          - { compiler: llvm, version: 2019, cc: clang-cl, cxx: clang-cl, os: windows-2019 }
+-+          - { compiler: llvm, version: 2022, cc: clang-cl, cxx: clang-cl, os: windows-2022 }
+-+    runs-on: ${{ matrix.os }}
+-+    steps:
+-+      - uses: actions/checkout@v6
+-+
+-   gcc:
+-diff --git a/tests/CMakeLists.txt.in b/tests/CMakeLists.txt.in
+---- a/tests/CMakeLists.txt.in
+-+++ b/tests/CMakeLists.txt.in
+-@@ -5,6 +5,7 @@
+- ExternalProject_Add(googletest
+-   GIT_REPOSITORY    https://github.com/google/googletest.git
+-   GIT_TAG           v1.14.0
+-+  GIT_SHALLOW       ON
+-   SOURCE_DIR        "${CMAKE_CURRENT_BINARY_DIR}/googletest-src"
+-   BINARY_DIR        "${CMAKE_CURRENT_BINARY_DIR}/googletest-build"
+-   CONFIGURE_COMMAND ""
+-diff --git a/run_tests.sh b/run_tests.sh
+-new file mode 100755
+---- /dev/null
+-+++ b/run_tests.sh
+-@@ -0,0 +1,4 @@
+-+#!/bin/bash
+-+# 仅运行名称包含 span 的测试用例，并以 JSON 格式输出结果
+-+# 注意：--output-json 需 CMake 3.30 及以上版本支持
+-+ctest -R "span" --output-json results.json
+\ No newline at end of file
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index b306dc1..80e222e 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -46,3 +46,14 @@ if (GSL_INSTALL)
+ 
+     install(FILES GSL.natvis DESTINATION ${cmake_files_install_dir})
+ endif()
 +
-   gcc:
-diff --git a/tests/CMakeLists.txt.in b/tests/CMakeLists.txt.in
---- a/tests/CMakeLists.txt.in
-+++ b/tests/CMakeLists.txt.in
-@@ -5,6 +5,7 @@
- ExternalProject_Add(googletest
-   GIT_REPOSITORY    https://github.com/google/googletest.git
-   GIT_TAG           v1.14.0
-+  GIT_SHALLOW       ON
-   SOURCE_DIR        "${CMAKE_CURRENT_BINARY_DIR}/googletest-src"
-   BINARY_DIR        "${CMAKE_CURRENT_BINARY_DIR}/googletest-build"
-   CONFIGURE_COMMAND ""
-diff --git a/run_tests.sh b/run_tests.sh
-new file mode 100755
---- /dev/null
-+++ b/run_tests.sh
-@@ -0,0 +1,4 @@
-+#!/bin/bash
-+# 仅运行名称包含 span 的测试用例，并以 JSON 格式输出结果
-+# 注意：--output-json 需 CMake 3.30 及以上版本支持
-+ctest -R "span" --output-json results.json
++# Example: Using FetchContent to consume GSL
++include(FetchContent)
++FetchContent_Declare(
++  GSL
++  GIT_REPOSITORY https://github.com/microsoft/GSL.git
++  GIT_TAG v4.2.0
++  GIT_SHALLOW ON
++)
++FetchContent_MakeAvailable(GSL)
++

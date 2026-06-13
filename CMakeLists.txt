@@ -46,3 +46,14 @@ if (GSL_INSTALL)
 
     install(FILES GSL.natvis DESTINATION ${cmake_files_install_dir})
 endif()
+
+# Example: Using FetchContent to consume GSL
+include(FetchContent)
+FetchContent_Declare(
+  GSL
+  GIT_REPOSITORY https://github.com/microsoft/GSL.git
+  GIT_TAG v4.2.0
+  GIT_SHALLOW ON
+)
+FetchContent_MakeAvailable(GSL)
+

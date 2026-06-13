@@ -1,0 +1,86 @@
+name: CI
+
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            compiler: gcc-12
+            cc: gcc-12
+            cxx: g++-12
+          - os: ubuntu-22.04
+            compiler: gcc-13
+            cc: gcc-13
+            cxx: g++-13
+          - os: ubuntu-24.04
+            compiler: gcc-14
+            cc: gcc-14
+            cxx: g++-14
+          - os: ubuntu-22.04
+            compiler: clang-16
+            cc: clang-16
+            cxx: clang++-16
+          - os: ubuntu-22.04
+            compiler: clang-17
+            cc: clang-17
+            cxx: clang++-17
+          - os: ubuntu-24.04
+            compiler: clang-18
+            cc: clang-18
+            cxx: clang++-18
+          - os: macos-13
+            compiler: xcode-14.3.1
+            developer_dir: /Applications/Xcode_14.3.1.app/Contents/Developer
+            cc: clang
+            cxx: clang++
+          - os: macos-14
+            compiler: xcode-15.4
+            developer_dir: /Applications/Xcode_15.4.app/Contents/Developer
+            cc: clang
+            cxx: clang++
+          - os: windows-2019
+            compiler: msvc-2019
+            cc: cl
+            cxx: cl
+          - os: windows-2022
+            compiler: msvc-2022
+            cc: cl
+            cxx: cl
+          - os: windows-2019
+            compiler: clang-cl-2019
+            cc: clang-cl
+            cxx: clang-cl
+          - os: windows-2022
+            compiler: clang-cl-2022
+            cc: clang-cl
+            cxx: clang-cl
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up environment
+        shell: bash
+        run: |
+          if [ -n "${{ matrix.developer_dir }}" ]; then
+            echo "DEVELOPER_DIR=${{ matrix.developer_dir }}" >> $GITHUB_ENV
+          fi
+          if [ "${{ matrix.cc }}" != "cl" ] && [ "${{ matrix.cc }}" != "clang-cl" ]; then
+            echo "CC=${{ matrix.cc }}" >> $GITHUB_ENV
+            echo "CXX=${{ matrix.cxx }}" >> $GITHUB_ENV
+          fi
+
+      - name: Configure (Windows Clang-cl)
+        if: contains(matrix.compiler, 'clang-cl')
+        run: cmake -B build -T ClangCL
+
+      - name: Configure (Other)
+        if: "!contains(matrix.compiler, 'clang-cl')"
+        run: cmake -B build
+
+      - name: Build
+        run: cmake --build build
