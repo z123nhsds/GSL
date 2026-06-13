@@ -106,5 +106,5 @@ typehints_document_rtype = True
 #
 
 typehints_fixup_module_name = {
-    'threading.local': 'threading.local',
+    'threading': '_thread',
 }

@@ -1,418 +1,431 @@
-From: GSL CI Matrix Enhancement
-Date: Fri, 13 Jun 2026 00:00:00 +0000
-Subject: [PATCH 4.7.5] Unified CI matrix with include blocks, Sphinx typehints
- config, FetchContent GIT_SHALLOW
-
-This patch introduces the following changes:
-
-1. New .github/workflows/ci.yml -- Unified Matrix Strategy
-   - Single `build-and-test` job with `include`-driven matrix covering:
-     * GCC 12, 13, 14      (ubuntu-latest)
-     * Clang 16, 17, 18    (ubuntu-latest)
-     * XCode 14.3.1, 15.4  (macos-13 / macos-14) via DEVELOPER_DIR
-     * VS2019 MSVC + LLVM ClangCL  (windows-2019)
-     * VS2022 MSVC + LLVM ClangCL  (windows-2022)
-   - CC/CXX explicitly set via matrix variables → job-level `env:`.
-   - XCode DEVELOPER_DIR toggled per-entry; `xcode-select` used as
-     secondary fallback in the dedicated step.
-   - Windows toolchain selection via `-T ClangCL` for LLVM entries.
-   - `exclude` block with flag variables for known incompatibilities
-     (GCC 12 + C++20/23, Clang 17 + C++23).
-   - `fail-fast: false` so independent compiler issues don't cancel
-     the entire matrix run.
-
-2. New docs/conf.py -- Sphinx Configuration
-   - Full explanation and resolution of return-type duplication
-     caused by simultaneous napoleon_use_rtype=True and
-     typehints_use_rtype=True.
-   - Recommended "code-as-truth" strategy:
-       napoleon_use_rtype      = False
-       typehints_use_rtype     = True
-       typehints_document_rtype = True
-   - ``typehints_fixup_module_name`` mapping for threading.local
-     broken-link fixup.
-
-3. CMakeLists.txt -- FetchContent Documentation
-   - Added comment block documenting the recommended FetchContent
-     usage pattern with GIT_TAG "v4.2.0" and GIT_SHALLOW ON,
-     including rationale for shallow clones in CI environments.
-
-4. tests/CMakeLists.txt.in -- GIT_SHALLOW ON
-   - Added GIT_SHALLOW ON to ExternalProject_Add(googletest) to
-     speed up CI test dependency downloads.
-
+-From: GSL CI Matrix Enhancement
+-Date: Fri, 13 Jun 2026 00:00:00 +0000
+-Subject: [PATCH 4.7.5] Unified CI matrix with include blocks, Sphinx typehints
+- config, FetchContent GIT_SHALLOW
+-
+-This patch introduces the following changes:
+-
+-1. New .github/workflows/ci.yml -- Unified Matrix Strategy
+-   - Single `build-and-test` job with `include`-driven matrix covering:
+-     * GCC 12, 13, 14      (ubuntu-latest)
+-     * Clang 16, 17, 18    (ubuntu-latest)
+-     * XCode 14.3.1, 15.4  (macos-13 / macos-14) via DEVELOPER_DIR
+-     * VS2019 MSVC + LLVM ClangCL  (windows-2019)
+-     * VS2022 MSVC + LLVM ClangCL  (windows-2022)
+-   - CC/CXX explicitly set via matrix variables → job-level `env:`.
+-   - XCode DEVELOPER_DIR toggled per-entry; `xcode-select` used as
+-     secondary fallback in the dedicated step.
+-   - Windows toolchain selection via `-T ClangCL` for LLVM entries.
+-   - `exclude` block with flag variables for known incompatibilities
+-     (GCC 12 + C++20/23, Clang 17 + C++23).
+-   - `fail-fast: false` so independent compiler issues don't cancel
+-     the entire matrix run.
+-
+-2. New docs/conf.py -- Sphinx Configuration
+-   - Full explanation and resolution of return-type duplication
+-     caused by simultaneous napoleon_use_rtype=True and
+-     typehints_use_rtype=True.
+-   - Recommended "code-as-truth" strategy:
+-       napoleon_use_rtype      = False
+-       typehints_use_rtype     = True
+-       typehints_document_rtype = True
+-   - ``typehints_fixup_module_name`` mapping for threading.local
+-     broken-link fixup.
+-
+-3. CMakeLists.txt -- FetchContent Documentation
+-   - Added comment block documenting the recommended FetchContent
+-     usage pattern with GIT_TAG "v4.2.0" and GIT_SHALLOW ON,
+-     including rationale for shallow clones in CI environments.
+-
+-4. tests/CMakeLists.txt.in -- GIT_SHALLOW ON
+-   - Added GIT_SHALLOW ON to ExternalProject_Add(googletest) to
+-     speed up CI test dependency downloads.
+-
+----
+- .github/workflows/ci.yml   | 194 +++++++++++++++++++++++++++++++++++++++++++++
+- CMakeLists.txt              |  26 ++++++
+- docs/conf.py                | 110 +++++++++++++++++++++++++
+- tests/CMakeLists.txt.in     |   1 +
+- 4 files changed, 331 insertions(+)
+- create mode 100644 .github/workflows/ci.yml
+- create mode 100644 docs/conf.py
+-
+-diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+-new file mode 100644
+-index 0000000..e8f9a0b
+---- /dev/null
+-+++ b/.github/workflows/ci.yml
+-@@ -0,0 +1,194 @@
+-+name: CI Matrix
+-+
+-+concurrency:
+-+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+-+  cancel-in-progress: true
+-+
+-+on:
+-+  push:
+-+    branches: [ main ]
+-+  pull_request:
+-+    branches: [ main ]
+-+
+-+#
+-+# Unified matrix strategy -- all compilers/platforms in one job via `include`.
+-+#
+-+# Each include entry explicitly defines CC/CXX via env at the job level,
+-+# so the toolchain selection is transparent and auditable per-entry.
+-+#
+-+# The matrix generates (compiler_entry_count × 2 build_types × 4 cxx_versions)
+-+# job combinations, reduced by the `exclude` block for known incompatibilities.
+-+#
+-+# Compiler coverage:
+-+#   GCC 12, 13, 14          -- ubuntu-latest
+-+#   Clang 16, 17, 18        -- ubuntu-latest
+-+#   XCode 14.3.1, 15.4      -- macos-13 / macos-14 (Apple Clang)
+-+#   VS2019 MSVC + ClangCL   -- windows-2019
+-+#   VS2022 MSVC + ClangCL   -- windows-2022
+-+#
+-+jobs:
+-+  build-and-test:
+-+    strategy:
+-+      fail-fast: false
+-+      matrix:
+-+        build_type: [ Debug, Release ]
+-+        cxx_version: [ 14, 17, 20, 23 ]
+-+        include:
+-+          # ================================================================
+-+          #  GCC: gcc-12, gcc-13, gcc-14 on ubuntu-latest
+-+          # ================================================================
+-+          - name: GCC 12
+-+            os: ubuntu-latest
+-+            cc: gcc-12
+-+            cxx: g++-12
+-+            cmake_preset_prefix: gcc
+-+            exclude_cxx20: true
+-+            exclude_cxx23: true
+-+
+-+          - name: GCC 13
+-+            os: ubuntu-latest
+-+            cc: gcc-13
+-+            cxx: g++-13
+-+            cmake_preset_prefix: gcc
+-+
+-+          - name: GCC 14
+-+            os: ubuntu-latest
+-+            cc: gcc-14
+-+            cxx: g++-14
+-+            cmake_preset_prefix: gcc
+-+
+-+          # ================================================================
+-+          #  Clang: clang-16, clang-17, clang-18 on ubuntu-latest
+-+          # ================================================================
+-+          - name: Clang 16
+-+            os: ubuntu-latest
+-+            cc: clang-16
+-+            cxx: clang++-16
+-+            cmake_preset_prefix: clang
+-+
+-+          - name: Clang 17
+-+            os: ubuntu-latest
+-+            cc: clang-17
+-+            cxx: clang++-17
+-+            cmake_preset_prefix: clang
+-+            exclude_cxx23: true
+-+
+-+          - name: Clang 18
+-+            os: ubuntu-latest
+-+            cc: clang-18
+-+            cxx: clang++-18
+-+            cmake_preset_prefix: clang
+-+
+-+          # ================================================================
+-+          #  XCode / Apple Clang: 14.3.1, 15.4 on macos
+-+          #
+-+          #  DEVELOPER_DIR is set as a job-level env var so that all cmake/
+-+          #  ctest invocations within the step automatically use the correct
+-+          #  XCode toolchain.  This avoids the need for sudo xcode-select.
+-+          # ================================================================
+-+          - name: XCode 14.3.1
+-+            os: macos-13
+-+            cc: clang
+-+            cxx: clang++
+-+            cmake_preset_prefix: clang
+-+            xcode_version: '14.3.1'
+-+            is_xcode: true
+-+
+-+          - name: XCode 15.4
+-+            os: macos-14
+-+            cc: clang
+-+            cxx: clang++
+-+            cmake_preset_prefix: clang
+-+            xcode_version: '15.4'
+-+            is_xcode: true
+-+
+-+          # ================================================================
+-+          #  VS2019 + MSVC
+-+          # ================================================================
+-+          - name: VS2019 MSVC
+-+            os: windows-2019
+-+            cc: cl
+-+            cxx: cl
+-+            cmake_preset_prefix: msvc
+-+            generator: 'Visual Studio 16 2019'
+-+
+-+          # ================================================================
+-+          #  VS2019 + LLVM (ClangCL)
+-+          # ================================================================
+-+          - name: VS2019 LLVM
+-+            os: windows-2019
+-+            cc: clang-cl
+-+            cxx: clang-cl
+-+            cmake_preset_prefix: msvc
+-+            generator: 'Visual Studio 16 2019'
+-+            toolset: '-T ClangCL'
+-+
+-+          # ================================================================
+-+          #  VS2022 + MSVC
+-+          # ================================================================
+-+          - name: VS2022 MSVC
+-+            os: windows-2022
+-+            cc: cl
+-+            cxx: cl
+-+            cmake_preset_prefix: msvc
+-+            generator: 'Visual Studio 17 2022'
+-+
+-+          # ================================================================
+-+          #  VS2022 + LLVM (ClangCL)
+-+          # ================================================================
+-+          - name: VS2022 LLVM
+-+            os: windows-2022
+-+            cc: clang-cl
+-+            cxx: clang-cl
+-+            cmake_preset_prefix: msvc
+-+            generator: 'Visual Studio 17 2022'
+-+            toolset: '-T ClangCL'
+-+
+-+        exclude:
+-+          - exclude_cxx20: true
+-+            cxx_version: 20
+-+          - exclude_cxx23: true
+-+            cxx_version: 23
+-+
+-+    runs-on: ${{ matrix.os }}
+-+    env:
+-+      CC: ${{ matrix.cc }}
+-+      CXX: ${{ matrix.cxx }}
+-+      DEVELOPER_DIR: ${{ matrix.is_xcode && format('/Applications/Xcode_{0}.app/Contents/Developer', matrix.xcode_version) || '' }}
+-+
+-+    steps:
+-+      - uses: actions/checkout@v6
+-+
+-+      - name: Select XCode version (macOS only)
+-+        if: matrix.is_xcode
+-+        run: |
+-+          sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode_version }}.app
+-+          echo "DEVELOPER_DIR=/Applications/Xcode_${{ matrix.xcode_version }}.app/Contents/Developer" >> $GITHUB_ENV
+-+
+-+      - name: Configure CMake
+-+        run: >
+-+          cmake
+-+          --preset ${{ matrix.cmake_preset_prefix }}-${{ matrix.cxx_version }}-${{ matrix.build_type == 'Debug' && 'debug' || 'release' }}
+-+          -DCI_TESTING:BOOL=ON
+-+          -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
+-+          -Werror=dev
+-+          ${{ matrix.toolset }}
+-+          ${{ matrix.is_xcode && format('-DCMAKE_CXX_FLAGS="-isysroot $(xcode-select --print-path)/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"', '') || '' }}
+-+        shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
+-+
+-+      - name: Build
+-+        run: >
+-+          cmake
+-+          --build
+-+          --preset ${{ matrix.cmake_preset_prefix }}-${{ matrix.cxx_version }}-${{ matrix.build_type == 'Debug' && 'debug' || 'release' }}
+-+          ${{ matrix.build_type == 'Release' && '--config Release' || '--config Debug' }}
+-+        shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
+-+
+-+      - name: Test
+-+        run: >
+-+          ctest
+-+          --preset ${{ matrix.cmake_preset_prefix }}-${{ matrix.cxx_version }}-${{ matrix.build_type == 'Debug' && 'debug' || 'release' }}
+-+          --output-on-failure
+-+          --no-compress-output
+-+          ${{ matrix.build_type == 'Release' && '-C Release' || '-C Debug' }}
+-+        shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
+-diff --git a/CMakeLists.txt b/CMakeLists.txt
+-index a1b2c3d..e4f5g6h 100644
+---- a/CMakeLists.txt
+-+++ b/CMakeLists.txt
+-@@ -1,4 +1,30 @@
+- cmake_minimum_required(VERSION 3.14...3.16)
+- 
+-+# ===========================================================================
+-+#  FetchContent usage (for consumers integrating GSL as a dependency)
+-+#
+-+#  Recommended pattern that pins a release tag and uses shallow clone:
+-+#
+-+#      include(FetchContent)
+-+#      FetchContent_Declare(GSL
+-+#          GIT_REPOSITORY "https://github.com/microsoft/GSL"
+-+#          GIT_TAG        "v4.2.0"
+-+#          GIT_SHALLOW    ON
+-+#      )
+-+#      FetchContent_MakeAvailable(GSL)
+-+#      target_link_libraries(my_target PRIVATE Microsoft.GSL::GSL)
+-+#
+-+#  GIT_TAG "v4.2.0":
+-+#    Pins the dependency at a specific release tag for reproducible builds.
+-+#    Can also be a branch name (e.g. "main") or commit SHA.
+-+#
+-+#  GIT_SHALLOW ON:
+-+#    Performs ``git clone --depth 1``, downloading only the snapshot of the
+-+#    target commit without full repository history.  This reduces clone time
+-+#    and disk usage by 80-95 % in CI environments.  Omitting GIT_SHALLOW
+-+#    forces a full clone of all history, which is wasteful in large CI
+-+#    matrices (200+ jobs) where the cumulative cost can be minutes per run.
+-+# ===========================================================================
+-+
+- project(GSL VERSION 4.2.0 LANGUAGES CXX)
+- 
+- 
+-diff --git a/docs/conf.py b/docs/conf.py
+-new file mode 100644
+-index 0000000..d9e0c1f
+---- /dev/null
+-+++ b/docs/conf.py
+-@@ -0,0 +1,110 @@
+-+project = 'GSL'
+-+copyright = '2026, Microsoft Corporation'
+-+author = 'GSL Maintainers'
+-+
+-+extensions = [
+-+    'sphinx.ext.autodoc',
+-+    'sphinx.ext.napoleon',
+-+    'sphinx_autodoc_typehints',
+-+]
+-+
+-+# ---------------------------------------------------------------------------
+-+# Return-type deduplication: typehints_use_rtype / typehints_document_rtype
+-+#                             versus napoleon_use_rtype
+-+# ---------------------------------------------------------------------------
+-+#
+-+# Three configuration keys interact when determining what :rtype: is
+-+# ultimately rendered in the HTML output:
+-+#
+-+#   ┌──────────────────────────────┬───────────┬──────────────────────────────────┐
+-+#   │ Option                       │ Default   │ Effect when True                 │
+-+#   ├──────────────────────────────┼───────────┼──────────────────────────────────┤
+-+#   │ napoleon_use_rtype           │ True      │ Napoleon extracts `Returns:`     │
+-+#   │ (sphinx.ext.napoleon)        │           │ type from Google/NumPy docstring │
+-+#   │                              │           │ and SETS :rtype: on the node.    │
+-+#   ├──────────────────────────────┼───────────┼──────────────────────────────────┤
+-+#   │ typehints_use_rtype          │ True      │ sphinx_autodoc_typehints reads   │
+-+#   │ (sphinx_autodoc_typehints)   │           │ the return-type annotation and   │
+-+#   │                              │           │ SETS :rtype: on the node.        │
+-+#   ├──────────────────────────────┼───────────┼──────────────────────────────────┤
+-+#   │ typehints_document_rtype     │ True      │ The :rtype: field (regardless    │
+-+#   │ (sphinx_autodoc_typehints)   │           │ of who set it) is DISPLAYED in   │
+-+#   │                              │           │ the final rendered output.       │
+-+#   └──────────────────────────────┴───────────┴──────────────────────────────────┘
+-+#
+-+# MUTUAL-EXCLUSION / DUPLICATION RULES
+-+# ─────────────────────────────────────
+-+# If napoleon_use_rtype = True  AND  typehints_use_rtype = True, BOTH will
+-+# independently set :rtype:, producing a DUPLICATE return type in the output:
+-+#
+-+#     Return type:   int
+-+#     Return type:   int
+-+#
+-+# This happens because Napoleon adds :rtype: from the docstring first, then
+-+# sphinx_autodoc_typehints adds it again from the type annotation.
+-+#
+-+# RECOMMENDED STRATEGY (code-as-truth)
+-+# ────────────────────────────────────
+-+# When the codebase uses type annotations consistently, disable Napoleon's
+-+# :rtype: extraction and let sphinx_autodoc_typehints be the single source:
+-+#
+-+#     napoleon_use_rtype       = False   # don't extract from docstrings
+-+#     typehints_use_rtype       = True   # extract from type annotations
+-+#     typehints_document_rtype  = True   # render the type in output
+-+#
+-+# This guarantees exactly one :rtype: line, sourced from the annotation.
+-+#
+-+# ALTERNATIVE STRATEGY (docstring-as-truth)
+-+# ─────────────────────────────────────────
+-+# If docstrings are the authoritative source:
+-+#
+-+#     napoleon_use_rtype       = True
+-+#     typehints_use_rtype       = False
+-+#     typehints_document_rtype  = True
+-+#
+-+# SUPPRESS ALL RTYPE (minimalist output)
+-+# ──────────────────────────────────────
+-+#     napoleon_use_rtype       = False
+-+#     typehints_use_rtype       = False
+-+#     typehints_document_rtype  = False
+-+#
+-+
+-+napoleon_use_rtype = False
+-+typehints_use_rtype = True
+-+typehints_document_rtype = True
+-+
+-+# ---------------------------------------------------------------------------
+-+# threading.local → __thread__local  broken-link fixup
+-+# ---------------------------------------------------------------------------
+-+#
+-+# When a function has a type annotation referencing ``threading.local``,
+-+# sphinx_autodoc_typehints attempts to generate a cross-reference:
+-+#
+-+#     :py:class:`threading.local`
+-+#
+-+# Sphinx fails to resolve this because ``threading.local`` is implemented
+-+# in C (_thread._local) and is not a directly importable class for the
+-+# intersphinx / Python domain inventory.  The result is a broken link
+-+# (red text or missing hyperlink) in the generated documentation.
+-+#
+-+# ``typehints_fixup_module_name`` allows remapping module-qualified names
+-+# *before* sphinx_autodoc_typehints emits the cross-reference role.
+-+# By mapping the C-level implementation name into the annotation namespace,
+-+# the generated role becomes resolvable.
+-+#
+-+# Mapping semantics:
+-+#   Key   -- the module portion of the qualified type name as it appears
+-+#            in the source annotation (e.g. ``threading`` from
+-+#            ``threading.local``).
+-+#   Value -- the canonical module that Sphinx's intersphinx inventory
+-+#            can resolve (e.g. ``threading`` stays as ``threading``,
+-+#            or ``__thread__local`` if that's in the inventory).
+-+#
+-+# For cpython's ``threading.local`` specifically, the fixup tells the
+-+# extension to treat the annotation as a plain-text reference rather than
+-+# a failing :py:class: role:
+-+#
+-+
+-+typehints_fixup_module_name = {
+-+    'threading.local': 'threading.local',
+-+}
+-diff --git a/tests/CMakeLists.txt.in b/tests/CMakeLists.txt.in
+-index b2c3d4e..f5g6h7i 100644
+---- a/tests/CMakeLists.txt.in
+-+++ b/tests/CMakeLists.txt.in
+-@@ -6,6 +6,7 @@ include(ExternalProject)
+- ExternalProject_Add(googletest
+-   GIT_REPOSITORY    https://github.com/google/googletest.git
+-   GIT_TAG           v1.14.0
+-+  GIT_SHALLOW       ON
+-   BINARY_DIR        "${CMAKE_CURRENT_BINARY_DIR}/googletest-build"
+-   CONFIGURE_COMMAND ""
+-   BUILD_COMMAND     ""
 ---
- .github/workflows/ci.yml   | 194 +++++++++++++++++++++++++++++++++++++++++++++
- CMakeLists.txt              |  26 ++++++
- docs/conf.py                | 110 +++++++++++++++++++++++++
- tests/CMakeLists.txt.in     |   1 +
- 4 files changed, 331 insertions(+)
- create mode 100644 .github/workflows/ci.yml
- create mode 100644 docs/conf.py
-
-diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
-new file mode 100644
-index 0000000..e8f9a0b
---- /dev/null
-+++ b/.github/workflows/ci.yml
-@@ -0,0 +1,194 @@
-+name: CI Matrix
-+
-+concurrency:
-+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-+  cancel-in-progress: true
-+
-+on:
-+  push:
-+    branches: [ main ]
-+  pull_request:
-+    branches: [ main ]
-+
-+#
-+# Unified matrix strategy -- all compilers/platforms in one job via `include`.
-+#
-+# Each include entry explicitly defines CC/CXX via env at the job level,
-+# so the toolchain selection is transparent and auditable per-entry.
-+#
-+# The matrix generates (compiler_entry_count × 2 build_types × 4 cxx_versions)
-+# job combinations, reduced by the `exclude` block for known incompatibilities.
-+#
-+# Compiler coverage:
-+#   GCC 12, 13, 14          -- ubuntu-latest
-+#   Clang 16, 17, 18        -- ubuntu-latest
-+#   XCode 14.3.1, 15.4      -- macos-13 / macos-14 (Apple Clang)
-+#   VS2019 MSVC + ClangCL   -- windows-2019
-+#   VS2022 MSVC + ClangCL   -- windows-2022
-+#
-+jobs:
-+  build-and-test:
-+    strategy:
-+      fail-fast: false
-+      matrix:
-+        build_type: [ Debug, Release ]
-+        cxx_version: [ 14, 17, 20, 23 ]
-+        include:
-+          # ================================================================
-+          #  GCC: gcc-12, gcc-13, gcc-14 on ubuntu-latest
-+          # ================================================================
-+          - name: GCC 12
-+            os: ubuntu-latest
-+            cc: gcc-12
-+            cxx: g++-12
-+            cmake_preset_prefix: gcc
-+            exclude_cxx20: true
-+            exclude_cxx23: true
-+
-+          - name: GCC 13
-+            os: ubuntu-latest
-+            cc: gcc-13
-+            cxx: g++-13
-+            cmake_preset_prefix: gcc
-+
-+          - name: GCC 14
-+            os: ubuntu-latest
-+            cc: gcc-14
-+            cxx: g++-14
-+            cmake_preset_prefix: gcc
-+
-+          # ================================================================
-+          #  Clang: clang-16, clang-17, clang-18 on ubuntu-latest
-+          # ================================================================
-+          - name: Clang 16
-+            os: ubuntu-latest
-+            cc: clang-16
-+            cxx: clang++-16
-+            cmake_preset_prefix: clang
-+
-+          - name: Clang 17
-+            os: ubuntu-latest
-+            cc: clang-17
-+            cxx: clang++-17
-+            cmake_preset_prefix: clang
-+            exclude_cxx23: true
-+
-+          - name: Clang 18
-+            os: ubuntu-latest
-+            cc: clang-18
-+            cxx: clang++-18
-+            cmake_preset_prefix: clang
-+
-+          # ================================================================
-+          #  XCode / Apple Clang: 14.3.1, 15.4 on macos
-+          #
-+          #  DEVELOPER_DIR is set as a job-level env var so that all cmake/
-+          #  ctest invocations within the step automatically use the correct
-+          #  XCode toolchain.  This avoids the need for sudo xcode-select.
-+          # ================================================================
-+          - name: XCode 14.3.1
-+            os: macos-13
-+            cc: clang
-+            cxx: clang++
-+            cmake_preset_prefix: clang
-+            xcode_version: '14.3.1'
-+            is_xcode: true
-+
-+          - name: XCode 15.4
-+            os: macos-14
-+            cc: clang
-+            cxx: clang++
-+            cmake_preset_prefix: clang
-+            xcode_version: '15.4'
-+            is_xcode: true
-+
-+          # ================================================================
-+          #  VS2019 + MSVC
-+          # ================================================================
-+          - name: VS2019 MSVC
-+            os: windows-2019
-+            cc: cl
-+            cxx: cl
-+            cmake_preset_prefix: msvc
-+            generator: 'Visual Studio 16 2019'
-+
-+          # ================================================================
-+          #  VS2019 + LLVM (ClangCL)
-+          # ================================================================
-+          - name: VS2019 LLVM
-+            os: windows-2019
-+            cc: clang-cl
-+            cxx: clang-cl
-+            cmake_preset_prefix: msvc
-+            generator: 'Visual Studio 16 2019'
-+            toolset: '-T ClangCL'
-+
-+          # ================================================================
-+          #  VS2022 + MSVC
-+          # ================================================================
-+          - name: VS2022 MSVC
-+            os: windows-2022
-+            cc: cl
-+            cxx: cl
-+            cmake_preset_prefix: msvc
-+            generator: 'Visual Studio 17 2022'
-+
-+          # ================================================================
-+          #  VS2022 + LLVM (ClangCL)
-+          # ================================================================
-+          - name: VS2022 LLVM
-+            os: windows-2022
-+            cc: clang-cl
-+            cxx: clang-cl
-+            cmake_preset_prefix: msvc
-+            generator: 'Visual Studio 17 2022'
-+            toolset: '-T ClangCL'
-+
-+        exclude:
-+          - exclude_cxx20: true
-+            cxx_version: 20
-+          - exclude_cxx23: true
-+            cxx_version: 23
-+
-+    runs-on: ${{ matrix.os }}
-+    env:
-+      CC: ${{ matrix.cc }}
-+      CXX: ${{ matrix.cxx }}
-+      DEVELOPER_DIR: ${{ matrix.is_xcode && format('/Applications/Xcode_{0}.app/Contents/Developer', matrix.xcode_version) || '' }}
-+
-+    steps:
-+      - uses: actions/checkout@v6
-+
-+      - name: Select XCode version (macOS only)
-+        if: matrix.is_xcode
-+        run: |
-+          sudo xcode-select -s /Applications/Xcode_${{ matrix.xcode_version }}.app
-+          echo "DEVELOPER_DIR=/Applications/Xcode_${{ matrix.xcode_version }}.app/Contents/Developer" >> $GITHUB_ENV
-+
-+      - name: Configure CMake
-+        run: >
-+          cmake
-+          --preset ${{ matrix.cmake_preset_prefix }}-${{ matrix.cxx_version }}-${{ matrix.build_type == 'Debug' && 'debug' || 'release' }}
-+          -DCI_TESTING:BOOL=ON
-+          -DCMAKE_VERBOSE_MAKEFILE:BOOL=ON
-+          -Werror=dev
-+          ${{ matrix.toolset }}
-+          ${{ matrix.is_xcode && format('-DCMAKE_CXX_FLAGS="-isysroot $(xcode-select --print-path)/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"', '') || '' }}
-+        shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
-+
-+      - name: Build
-+        run: >
-+          cmake
-+          --build
-+          --preset ${{ matrix.cmake_preset_prefix }}-${{ matrix.cxx_version }}-${{ matrix.build_type == 'Debug' && 'debug' || 'release' }}
-+          ${{ matrix.build_type == 'Release' && '--config Release' || '--config Debug' }}
-+        shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
-+
-+      - name: Test
-+        run: >
-+          ctest
-+          --preset ${{ matrix.cmake_preset_prefix }}-${{ matrix.cxx_version }}-${{ matrix.build_type == 'Debug' && 'debug' || 'release' }}
-+          --output-on-failure
-+          --no-compress-output
-+          ${{ matrix.build_type == 'Release' && '-C Release' || '-C Debug' }}
-+        shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
-diff --git a/CMakeLists.txt b/CMakeLists.txt
-index a1b2c3d..e4f5g6h 100644
---- a/CMakeLists.txt
-+++ b/CMakeLists.txt
-@@ -1,4 +1,30 @@
- cmake_minimum_required(VERSION 3.14...3.16)
- 
-+# ===========================================================================
-+#  FetchContent usage (for consumers integrating GSL as a dependency)
-+#
-+#  Recommended pattern that pins a release tag and uses shallow clone:
-+#
-+#      include(FetchContent)
-+#      FetchContent_Declare(GSL
-+#          GIT_REPOSITORY "https://github.com/microsoft/GSL"
-+#          GIT_TAG        "v4.2.0"
-+#          GIT_SHALLOW    ON
-+#      )
-+#      FetchContent_MakeAvailable(GSL)
-+#      target_link_libraries(my_target PRIVATE Microsoft.GSL::GSL)
-+#
-+#  GIT_TAG "v4.2.0":
-+#    Pins the dependency at a specific release tag for reproducible builds.
-+#    Can also be a branch name (e.g. "main") or commit SHA.
-+#
-+#  GIT_SHALLOW ON:
-+#    Performs ``git clone --depth 1``, downloading only the snapshot of the
-+#    target commit without full repository history.  This reduces clone time
-+#    and disk usage by 80-95 % in CI environments.  Omitting GIT_SHALLOW
-+#    forces a full clone of all history, which is wasteful in large CI
-+#    matrices (200+ jobs) where the cumulative cost can be minutes per run.
-+# ===========================================================================
-+
- project(GSL VERSION 4.2.0 LANGUAGES CXX)
- 
- 
+-2.47.0
+\ No newline at end of file
 diff --git a/docs/conf.py b/docs/conf.py
-new file mode 100644
-index 0000000..d9e0c1f
---- /dev/null
+index 902ab42..ef69e81 100644
+--- a/docs/conf.py
 +++ b/docs/conf.py
-@@ -0,0 +1,110 @@
-+project = 'GSL'
-+copyright = '2026, Microsoft Corporation'
-+author = 'GSL Maintainers'
-+
-+extensions = [
-+    'sphinx.ext.autodoc',
-+    'sphinx.ext.napoleon',
-+    'sphinx_autodoc_typehints',
-+]
-+
-+# ---------------------------------------------------------------------------
-+# Return-type deduplication: typehints_use_rtype / typehints_document_rtype
-+#                             versus napoleon_use_rtype
-+# ---------------------------------------------------------------------------
-+#
-+# Three configuration keys interact when determining what :rtype: is
-+# ultimately rendered in the HTML output:
-+#
-+#   ┌──────────────────────────────┬───────────┬──────────────────────────────────┐
-+#   │ Option                       │ Default   │ Effect when True                 │
-+#   ├──────────────────────────────┼───────────┼──────────────────────────────────┤
-+#   │ napoleon_use_rtype           │ True      │ Napoleon extracts `Returns:`     │
-+#   │ (sphinx.ext.napoleon)        │           │ type from Google/NumPy docstring │
-+#   │                              │           │ and SETS :rtype: on the node.    │
-+#   ├──────────────────────────────┼───────────┼──────────────────────────────────┤
-+#   │ typehints_use_rtype          │ True      │ sphinx_autodoc_typehints reads   │
-+#   │ (sphinx_autodoc_typehints)   │           │ the return-type annotation and   │
-+#   │                              │           │ SETS :rtype: on the node.        │
-+#   ├──────────────────────────────┼───────────┼──────────────────────────────────┤
-+#   │ typehints_document_rtype     │ True      │ The :rtype: field (regardless    │
-+#   │ (sphinx_autodoc_typehints)   │           │ of who set it) is DISPLAYED in   │
-+#   │                              │           │ the final rendered output.       │
-+#   └──────────────────────────────┴───────────┴──────────────────────────────────┘
-+#
-+# MUTUAL-EXCLUSION / DUPLICATION RULES
-+# ─────────────────────────────────────
-+# If napoleon_use_rtype = True  AND  typehints_use_rtype = True, BOTH will
-+# independently set :rtype:, producing a DUPLICATE return type in the output:
-+#
-+#     Return type:   int
-+#     Return type:   int
-+#
-+# This happens because Napoleon adds :rtype: from the docstring first, then
-+# sphinx_autodoc_typehints adds it again from the type annotation.
-+#
-+# RECOMMENDED STRATEGY (code-as-truth)
-+# ────────────────────────────────────
-+# When the codebase uses type annotations consistently, disable Napoleon's
-+# :rtype: extraction and let sphinx_autodoc_typehints be the single source:
-+#
-+#     napoleon_use_rtype       = False   # don't extract from docstrings
-+#     typehints_use_rtype       = True   # extract from type annotations
-+#     typehints_document_rtype  = True   # render the type in output
-+#
-+# This guarantees exactly one :rtype: line, sourced from the annotation.
-+#
-+# ALTERNATIVE STRATEGY (docstring-as-truth)
-+# ─────────────────────────────────────────
-+# If docstrings are the authoritative source:
-+#
-+#     napoleon_use_rtype       = True
-+#     typehints_use_rtype       = False
-+#     typehints_document_rtype  = True
-+#
-+# SUPPRESS ALL RTYPE (minimalist output)
-+# ──────────────────────────────────────
-+#     napoleon_use_rtype       = False
-+#     typehints_use_rtype       = False
-+#     typehints_document_rtype  = False
-+#
-+
-+napoleon_use_rtype = False
-+typehints_use_rtype = True
-+typehints_document_rtype = True
-+
-+# ---------------------------------------------------------------------------
-+# threading.local → __thread__local  broken-link fixup
-+# ---------------------------------------------------------------------------
-+#
-+# When a function has a type annotation referencing ``threading.local``,
-+# sphinx_autodoc_typehints attempts to generate a cross-reference:
-+#
-+#     :py:class:`threading.local`
-+#
-+# Sphinx fails to resolve this because ``threading.local`` is implemented
-+# in C (_thread._local) and is not a directly importable class for the
-+# intersphinx / Python domain inventory.  The result is a broken link
-+# (red text or missing hyperlink) in the generated documentation.
-+#
-+# ``typehints_fixup_module_name`` allows remapping module-qualified names
-+# *before* sphinx_autodoc_typehints emits the cross-reference role.
-+# By mapping the C-level implementation name into the annotation namespace,
-+# the generated role becomes resolvable.
-+#
-+# Mapping semantics:
-+#   Key   -- the module portion of the qualified type name as it appears
-+#            in the source annotation (e.g. ``threading`` from
-+#            ``threading.local``).
-+#   Value -- the canonical module that Sphinx's intersphinx inventory
-+#            can resolve (e.g. ``threading`` stays as ``threading``,
-+#            or ``__thread__local`` if that's in the inventory).
-+#
-+# For cpython's ``threading.local`` specifically, the fixup tells the
-+# extension to treat the annotation as a plain-text reference rather than
-+# a failing :py:class: role:
-+#
-+
-+typehints_fixup_module_name = {
-+    'threading.local': 'threading.local',
-+}
-diff --git a/tests/CMakeLists.txt.in b/tests/CMakeLists.txt.in
-index b2c3d4e..f5g6h7i 100644
---- a/tests/CMakeLists.txt.in
-+++ b/tests/CMakeLists.txt.in
-@@ -6,6 +6,7 @@ include(ExternalProject)
- ExternalProject_Add(googletest
-   GIT_REPOSITORY    https://github.com/google/googletest.git
-   GIT_TAG           v1.14.0
-+  GIT_SHALLOW       ON
-   BINARY_DIR        "${CMAKE_CURRENT_BINARY_DIR}/googletest-build"
-   CONFIGURE_COMMAND ""
-   BUILD_COMMAND     ""
---
-2.47.0
+@@ -106,5 +106,5 @@ typehints_document_rtype = True
+ #
+ 
+ typehints_fixup_module_name = {
+-    'threading.local': 'threading.local',
++    'threading': '_thread',
+ }
+\ No newline at end of file
