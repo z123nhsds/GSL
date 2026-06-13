@@ -1,0 +1,63 @@
+diff --git a/.github/workflows/compilers.yml b/.github/workflows/compilers.yml
+index a1b2c3d..e4f5g6h 100644
+--- a/.github/workflows/compilers.yml
++++ b/.github/workflows/compilers.yml
+@@ -10,6 +10,31 @@ on:
+ # and toolsets. If you change any versions, please update README.md.
+ 
+ jobs:
++  unified_compilers:
++    strategy:
++      matrix:
++        include:
++          # GCC
++          - { compiler: gcc, version: 12, cc: gcc-12, cxx: g++-12, os: ubuntu-latest }
++          - { compiler: gcc, version: 13, cc: gcc-13, cxx: g++-13, os: ubuntu-latest }
++          - { compiler: gcc, version: 14, cc: gcc-14, cxx: g++-14, os: ubuntu-latest }
++          # Clang
++          - { compiler: clang, version: 16, cc: clang-16, cxx: clang++-16, os: ubuntu-latest }
++          - { compiler: clang, version: 17, cc: clang-17, cxx: clang++-17, os: ubuntu-latest }
++          - { compiler: clang, version: 18, cc: clang-18, cxx: clang++-18, os: ubuntu-latest }
++          # XCode
++          - { compiler: xcode, version: '14.3.1', cc: clang, cxx: clang++, os: macos-13 }
++          - { compiler: xcode, version: '15.4', cc: clang, cxx: clang++, os: macos-14 }
++          # Visual Studio (MSVC)
++          - { compiler: msvc, version: 2019, cc: cl, cxx: cl, os: windows-2019 }
++          - { compiler: msvc, version: 2022, cc: cl, cxx: cl, os: windows-2022 }
++          # Visual Studio (LLVM / Clang-CL)
++          - { compiler: llvm, version: 2019, cc: clang-cl, cxx: clang-cl, os: windows-2019 }
++          - { compiler: llvm, version: 2022, cc: clang-cl, cxx: clang-cl, os: windows-2022 }
++    runs-on: ${{ matrix.os }}
++    steps:
++      - uses: actions/checkout@v6
++
+   gcc:
+     strategy:
+       matrix:
+diff --git a/example/CMakeLists.txt b/example/CMakeLists.txt
+new file mode 100644
+index 0000000..8a9b1c2
+--- /dev/null
++++ b/example/CMakeLists.txt
+@@ -0,0 +1,11 @@
++cmake_minimum_required(VERSION 3.14)
++project(GSLExample)
++
++include(FetchContent)
++FetchContent_Declare(GSL
++    GIT_REPOSITORY "https://github.com/microsoft/GSL"
++    GIT_TAG "v4.2.0"
++    GIT_SHALLOW ON
++)
++
++FetchContent_MakeAvailable(GSL)
+diff --git a/run_tests.sh b/run_tests.sh
+new file mode 100755
+index 0000000..f3b4c5d
+--- /dev/null
++++ b/run_tests.sh
+@@ -0,0 +1,4 @@
++#!/bin/bash
++# 仅运行名称包含 span 的测试用例，并以 JSON 格式输出结果
++# 注意：--output-json 需 CMake 3.30 及以上版本支持
++ctest -R "span" --output-json results.json
