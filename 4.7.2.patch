@@ -1,311 +1,311 @@
-diff --git a/.github/workflows/compilers.yml b/.github/workflows/compilers.yml
---- a/.github/workflows/compilers.yml
-+++ b/.github/workflows/compilers.yml
-@@ -20,12 +20,25 @@ jobs:
-         gcc_version: [ 12, 13, 14 ]
-         build_type: [ Debug, Release ]
-         cxx_version: [ 14, 17, 20, 23 ]
-+        include:
-+          - gcc_version: 12
-+            cc: gcc-12
-+            cxx: g++-12
-+          - gcc_version: 13
-+            cc: gcc-13
-+            cxx: g++-13
-+          - gcc_version: 14
-+            cc: gcc-14
-+            cxx: g++-14
-         exclude:
-           # https://github.com/google/googletest/issues/4232
-           # Looks like GoogleTest is not interested in making version 1.14
-           # work with gcc-12.
-           - gcc_version: 12
-             cxx_version: 20
-           - gcc_version: 12
-             cxx_version: 23
-     runs-on: ubuntu-latest
-+    env:
-+      CC: ${{ matrix.cc }}
-+      CXX: ${{ matrix.cxx }}
-     steps:
-       - uses: actions/checkout@v6
- 
-@@ -43,10 +56,21 @@ jobs:
-         clang_version: [ 16, 17, 18 ]
-         build_type: [ Debug, Release ]
-         cxx_version: [ 14, 17, 20, 23 ]
-+        include:
-+          - clang_version: 16
-+            cc: clang-16
-+            cxx: clang++-16
-+          - clang_version: 17
-+            cc: clang-17
-+            cxx: clang++-17
-+          - clang_version: 18
-+            cc: clang-18
-+            cxx: clang++-18
-         exclude:
-           # https://github.com/llvm/llvm-project/issues/93734
-           # Looks like clang fixed this issue in clang-18, but won't backport
-           # the fix.
-           - clang_version: 17
-             cxx_version: 23
-     runs-on: ubuntu-latest
-+    env:
-+      CC: ${{ matrix.cc }}
-+      CXX: ${{ matrix.cxx }}
-     steps:
-       - uses: actions/checkout@v6
-      
-@@ -64,4 +88,16 @@ jobs:
--        xcode_version: [ '16.4' ]
-+        xcode_version: [ '14.3.1', '15.4' ]
-         build_type: [ Debug, Release ]
-         cxx_version: [ 14, 17, 20, 23 ]
--    runs-on: macos-latest
-+        include:
-+          - xcode_version: '14.3.1'
-+            image: macos-13
-+            cc: clang
-+            cxx: clang++
-+          - xcode_version: '15.4'
-+            image: macos-14
-+            cc: clang
-+            cxx: clang++
-+    runs-on: ${{ matrix.image }}
-+    env:
-+      CC: ${{ matrix.cc }}
-+      CXX: ${{ matrix.cxx }}
-     steps:
-       - uses: actions/checkout@v6
- 
-@@ -82,7 +118,40 @@ jobs:
-       matrix:
--        generator: [ 'Visual Studio 17 2022' ]
--        image: [ windows-2022, windows-2025 ]
-+        visual_studio: [ VS2019, VS2022 ]
-+        toolchain: [ msvc, llvm ]
-         build_type: [ Debug, Release ]
--        extra_args: [ '', '-T ClangCL' ]
-         cxx_version: [ 14, 17, 20, 23 ]
-+        include:
-+          - visual_studio: VS2019
-+            toolchain: msvc
-+            generator: 'Visual Studio 16 2019'
-+            image: windows-2019
-+            extra_args: ''
-+            cc: cl
-+            cxx: cl
-+          - visual_studio: VS2019
-+            toolchain: llvm
-+            generator: 'Visual Studio 16 2019'
-+            image: windows-2019
-+            extra_args: '-T ClangCL'
-+            cc: clang-cl
-+            cxx: clang-cl
-+          - visual_studio: VS2022
-+            toolchain: msvc
-+            generator: 'Visual Studio 17 2022'
-+            image: windows-2022
-+            extra_args: ''
-+            cc: cl
-+            cxx: cl
-+          - visual_studio: VS2022
-+            toolchain: llvm
-+            generator: 'Visual Studio 17 2022'
-+            image: windows-2022
-+            extra_args: '-T ClangCL'
-+            cc: clang-cl
-+            cxx: clang-cl
-     runs-on: ${{ matrix.image }}
-+    env:
-+      CC: ${{ matrix.cc }}
-+      CXX: ${{ matrix.cxx }}
-+      CMAKE_GENERATOR: ${{ matrix.generator }}
-+      CMAKE_GENERATOR_PLATFORM: x64
-     steps:
-       - uses: actions/checkout@v6
-       - uses: microsoft/setup-msbuild@v3
-diff --git a/CMakePresets.json b/CMakePresets.json
---- a/CMakePresets.json
-+++ b/CMakePresets.json
-@@ -15,15 +15,9 @@
-             "name": "msvc-base",
-             "inherits": "base",
-             "hidden": true,
--            "generator": "Visual Studio 17 2022",
-             "condition": {
-                 "type": "equals",
-                 "lhs": "${hostSystemName}",
-                 "rhs": "Windows"
--            },
--            "toolset": "host=x64",
--            "architecture": "x64",
--            "cacheVariables": {
--                "CMAKE_CXX_COMPILER": "cl"
-             }
-         },
-         {
-@@ -31,9 +25,5 @@
-             "name": "gcc-base",
-             "inherits": "base",
-             "hidden": true,
--            "generator": "Unix Makefiles",
--            "cacheVariables": {
--                "CMAKE_CXX_COMPILER": "g++",
--                "CMAKE_C_COMPILER": "gcc"
--            }
-+            "generator": "Unix Makefiles"
-         },
-         {
-@@ -41,9 +31,5 @@
-             "name": "clang-base",
-             "inherits": "base",
-             "hidden": true,
--            "generator": "Unix Makefiles",
--            "cacheVariables": {
--                "CMAKE_CXX_COMPILER": "clang++",
--                "CMAKE_C_COMPILER": "clang"
--            }
-+            "generator": "Unix Makefiles"
-         },
-diff --git a/README.md b/README.md
---- a/README.md
-+++ b/README.md
-@@ -140,6 +140,15 @@ These steps assume the source code of this repository has been cloned into a dir
- 4. Run the test suite.
- 
-         ctest -C Debug
-+
-+To run only tests whose name contains `span` and write the filtered result as JSON:
-+
-+```bash
-+./scripts/ctest-span-json.sh build-x86
-+```
-+
-+The helper script runs `ctest --test-dir build-x86 -R span --output-on-failure --output-junit build-x86/ctest-span.junit.xml`
-+and converts the generated JUnit report into `build-x86/ctest-span.json`.
- 
- All tests should pass - indicating your platform is fully supported and you are ready to use the GSL types!
- 
-@@ -209,4 +218,11 @@ FetchContent_MakeAvailable(GSL)
- target_link_libraries(foobar PRIVATE Microsoft.GSL::GSL)
- ```
- 
-+`GIT_TAG "v4.2.0"` pins the FetchContent dependency to the `v4.2.0` release tag so CI and downstream builds use the same revision.
-+
-+`GIT_SHALLOW ON` requests a shallow clone for that tag instead of downloading the repository history.
-+
-+If `GIT_SHALLOW` is omitted, FetchContent performs a full clone, which increases CI time because
-+the checkout has to download the repository history before configuration can continue.
-+
- ## Debugging visualization support
-diff --git a/scripts/ctest-span-json.sh b/scripts/ctest-span-json.sh
-new file mode 100755
---- /dev/null
-+++ b/scripts/ctest-span-json.sh
-@@ -0,0 +1,104 @@
-+#!/usr/bin/env bash
-+set -euo pipefail
-+
-+build_dir="${1:-build}"
-+output_json="${2:-${build_dir%/}/ctest-span.json}"
-+output_junit="${3:-${build_dir%/}/ctest-span.junit.xml}"
-+
-+mkdir -p "$(dirname "$output_json")"
-+mkdir -p "$(dirname "$output_junit")"
-+
-+set +e
-+ctest --test-dir "$build_dir" -R span --output-on-failure --output-junit "$output_junit"
-+ctest_status=$?
-+set -e
-+
-+python3 - "$output_junit" "$output_json" <<'PY'
-+import json
-+import sys
-+import xml.etree.ElementTree as ET
-+from pathlib import Path
-+
-+xml_path = Path(sys.argv[1])
-+json_path = Path(sys.argv[2])
-+
-+if not xml_path.exists():
-+    payload = {
-+        "error": f"JUnit report not found: {xml_path}",
-+        "testsuites": [],
-+        "summary": {
-+            "tests": 0,
-+            "failures": 0,
-+            "errors": 0,
-+            "skipped": 0,
-+            "time": 0.0,
-+        },
-+    }
-+    json_text = json.dumps(payload, indent=2)
-+    json_path.write_text(json_text + "\n", encoding="utf-8")
-+    print(json_text)
-+    sys.exit(0)
-+
-+root = ET.parse(xml_path).getroot()
-+if root.tag == "testsuite":
-+    suites = [root]
-+else:
-+    suites = root.findall("testsuite")
-+
-+payload = {
-+    "testsuites": [],
-+    "summary": {
-+        "tests": 0,
-+        "failures": 0,
-+        "errors": 0,
-+        "skipped": 0,
-+        "time": 0.0,
-+    },
-+}
-+
-+for suite in suites:
-+    suite_payload = {
-+        "name": suite.attrib.get("name", ""),
-+        "tests": int(suite.attrib.get("tests", 0)),
-+        "failures": int(suite.attrib.get("failures", 0)),
-+        "errors": int(suite.attrib.get("errors", 0)),
-+        "skipped": int(suite.attrib.get("skipped", 0)),
-+        "time": float(suite.attrib.get("time", 0.0)),
-+        "testcases": [],
-+    }
-+    for case in suite.findall("testcase"):
-+        status = "passed"
-+        details = ""
-+        if case.find("failure") is not None:
-+            status = "failed"
-+            details = case.find("failure").text or ""
-+        elif case.find("error") is not None:
-+            status = "error"
-+            details = case.find("error").text or ""
-+        elif case.find("skipped") is not None:
-+            status = "skipped"
-+            details = case.find("skipped").text or ""
-+
-+        suite_payload["testcases"].append(
-+            {
-+                "name": case.attrib.get("name", ""),
-+                "classname": case.attrib.get("classname", ""),
-+                "time": float(case.attrib.get("time", 0.0)),
-+                "status": status,
-+                "details": details.strip(),
-+            }
-+        )
-+
-+    payload["testsuites"].append(suite_payload)
-+    payload["summary"]["tests"] += suite_payload["tests"]
-+    payload["summary"]["failures"] += suite_payload["failures"]
-+    payload["summary"]["errors"] += suite_payload["errors"]
-+    payload["summary"]["skipped"] += suite_payload["skipped"]
-+    payload["summary"]["time"] += suite_payload["time"]
-+
-+json_text = json.dumps(payload, indent=2)
-+json_path.write_text(json_text + "\n", encoding="utf-8")
-+print(json_text)
-+PY
-+
-+exit "$ctest_status"
+-diff --git a/.github/workflows/compilers.yml b/.github/workflows/compilers.yml
+---- a/.github/workflows/compilers.yml
+-+++ b/.github/workflows/compilers.yml
+-@@ -20,12 +20,25 @@ jobs:
+-         gcc_version: [ 12, 13, 14 ]
+-         build_type: [ Debug, Release ]
+-         cxx_version: [ 14, 17, 20, 23 ]
+-+        include:
+-+          - gcc_version: 12
+-+            cc: gcc-12
+-+            cxx: g++-12
+-+          - gcc_version: 13
+-+            cc: gcc-13
+-+            cxx: g++-13
+-+          - gcc_version: 14
+-+            cc: gcc-14
+-+            cxx: g++-14
+-         exclude:
+-           # https://github.com/google/googletest/issues/4232
+-           # Looks like GoogleTest is not interested in making version 1.14
+-           # work with gcc-12.
+-           - gcc_version: 12
+-             cxx_version: 20
+-           - gcc_version: 12
+-             cxx_version: 23
+-     runs-on: ubuntu-latest
+-+    env:
+-+      CC: ${{ matrix.cc }}
+-+      CXX: ${{ matrix.cxx }}
+-     steps:
+-       - uses: actions/checkout@v6
+- 
+-@@ -43,10 +56,21 @@ jobs:
+-         clang_version: [ 16, 17, 18 ]
+-         build_type: [ Debug, Release ]
+-         cxx_version: [ 14, 17, 20, 23 ]
+-+        include:
+-+          - clang_version: 16
+-+            cc: clang-16
+-+            cxx: clang++-16
+-+          - clang_version: 17
+-+            cc: clang-17
+-+            cxx: clang++-17
+-+          - clang_version: 18
+-+            cc: clang-18
+-+            cxx: clang++-18
+-         exclude:
+-           # https://github.com/llvm/llvm-project/issues/93734
+-           # Looks like clang fixed this issue in clang-18, but won't backport
+-           # the fix.
+-           - clang_version: 17
+-             cxx_version: 23
+-     runs-on: ubuntu-latest
+-+    env:
+-+      CC: ${{ matrix.cc }}
+-+      CXX: ${{ matrix.cxx }}
+-     steps:
+-       - uses: actions/checkout@v6
+-      
+-@@ -64,4 +88,16 @@ jobs:
+--        xcode_version: [ '16.4' ]
+-+        xcode_version: [ '14.3.1', '15.4' ]
+-         build_type: [ Debug, Release ]
+-         cxx_version: [ 14, 17, 20, 23 ]
+--    runs-on: macos-latest
+-+        include:
+-+          - xcode_version: '14.3.1'
+-+            image: macos-13
+-+            cc: clang
+-+            cxx: clang++
+-+          - xcode_version: '15.4'
+-+            image: macos-14
+-+            cc: clang
+-+            cxx: clang++
+-+    runs-on: ${{ matrix.image }}
+-+    env:
+-+      CC: ${{ matrix.cc }}
+-+      CXX: ${{ matrix.cxx }}
+-     steps:
+-       - uses: actions/checkout@v6
+- 
+-@@ -82,7 +118,40 @@ jobs:
+-       matrix:
+--        generator: [ 'Visual Studio 17 2022' ]
+--        image: [ windows-2022, windows-2025 ]
+-+        visual_studio: [ VS2019, VS2022 ]
+-+        toolchain: [ msvc, llvm ]
+-         build_type: [ Debug, Release ]
+--        extra_args: [ '', '-T ClangCL' ]
+-         cxx_version: [ 14, 17, 20, 23 ]
+-+        include:
+-+          - visual_studio: VS2019
+-+            toolchain: msvc
+-+            generator: 'Visual Studio 16 2019'
+-+            image: windows-2019
+-+            extra_args: ''
+-+            cc: cl
+-+            cxx: cl
+-+          - visual_studio: VS2019
+-+            toolchain: llvm
+-+            generator: 'Visual Studio 16 2019'
+-+            image: windows-2019
+-+            extra_args: '-T ClangCL'
+-+            cc: clang-cl
+-+            cxx: clang-cl
+-+          - visual_studio: VS2022
+-+            toolchain: msvc
+-+            generator: 'Visual Studio 17 2022'
+-+            image: windows-2022
+-+            extra_args: ''
+-+            cc: cl
+-+            cxx: cl
+-+          - visual_studio: VS2022
+-+            toolchain: llvm
+-+            generator: 'Visual Studio 17 2022'
+-+            image: windows-2022
+-+            extra_args: '-T ClangCL'
+-+            cc: clang-cl
+-+            cxx: clang-cl
+-     runs-on: ${{ matrix.image }}
+-+    env:
+-+      CC: ${{ matrix.cc }}
+-+      CXX: ${{ matrix.cxx }}
+-+      CMAKE_GENERATOR: ${{ matrix.generator }}
+-+      CMAKE_GENERATOR_PLATFORM: x64
+-     steps:
+-       - uses: actions/checkout@v6
+-       - uses: microsoft/setup-msbuild@v3
+-diff --git a/CMakePresets.json b/CMakePresets.json
+---- a/CMakePresets.json
+-+++ b/CMakePresets.json
+-@@ -15,15 +15,9 @@
+-             "name": "msvc-base",
+-             "inherits": "base",
+-             "hidden": true,
+--            "generator": "Visual Studio 17 2022",
+-             "condition": {
+-                 "type": "equals",
+-                 "lhs": "${hostSystemName}",
+-                 "rhs": "Windows"
+--            },
+--            "toolset": "host=x64",
+--            "architecture": "x64",
+--            "cacheVariables": {
+--                "CMAKE_CXX_COMPILER": "cl"
+-             }
+-         },
+-         {
+-@@ -31,9 +25,5 @@
+-             "name": "gcc-base",
+-             "inherits": "base",
+-             "hidden": true,
+--            "generator": "Unix Makefiles",
+--            "cacheVariables": {
+--                "CMAKE_CXX_COMPILER": "g++",
+--                "CMAKE_C_COMPILER": "gcc"
+--            }
+-+            "generator": "Unix Makefiles"
+-         },
+-         {
+-@@ -41,9 +31,5 @@
+-             "name": "clang-base",
+-             "inherits": "base",
+-             "hidden": true,
+--            "generator": "Unix Makefiles",
+--            "cacheVariables": {
+--                "CMAKE_CXX_COMPILER": "clang++",
+--                "CMAKE_C_COMPILER": "clang"
+--            }
+-+            "generator": "Unix Makefiles"
+-         },
+-diff --git a/README.md b/README.md
+---- a/README.md
+-+++ b/README.md
+-@@ -140,6 +140,15 @@ These steps assume the source code of this repository has been cloned into a dir
+- 4. Run the test suite.
+- 
+-         ctest -C Debug
+-+
+-+To run only tests whose name contains `span` and write the filtered result as JSON:
+-+
+-+```bash
+-+./scripts/ctest-span-json.sh build-x86
+-+```
+-+
+-+The helper script runs `ctest --test-dir build-x86 -R span --output-on-failure --output-junit build-x86/ctest-span.junit.xml`
+-+and converts the generated JUnit report into `build-x86/ctest-span.json`.
+- 
+- All tests should pass - indicating your platform is fully supported and you are ready to use the GSL types!
+- 
+-@@ -209,4 +218,11 @@ FetchContent_MakeAvailable(GSL)
+- target_link_libraries(foobar PRIVATE Microsoft.GSL::GSL)
+- ```
+- 
+-+`GIT_TAG "v4.2.0"` pins the FetchContent dependency to the `v4.2.0` release tag so CI and downstream builds use the same revision.
+-+
+-+`GIT_SHALLOW ON` requests a shallow clone for that tag instead of downloading the repository history.
+-+
+-+If `GIT_SHALLOW` is omitted, FetchContent performs a full clone, which increases CI time because
+-+the checkout has to download the repository history before configuration can continue.
+-+
+- ## Debugging visualization support
+-diff --git a/scripts/ctest-span-json.sh b/scripts/ctest-span-json.sh
+-new file mode 100755
+---- /dev/null
+-+++ b/scripts/ctest-span-json.sh
+-@@ -0,0 +1,104 @@
+-+#!/usr/bin/env bash
+-+set -euo pipefail
+-+
+-+build_dir="${1:-build}"
+-+output_json="${2:-${build_dir%/}/ctest-span.json}"
+-+output_junit="${3:-${build_dir%/}/ctest-span.junit.xml}"
+-+
+-+mkdir -p "$(dirname "$output_json")"
+-+mkdir -p "$(dirname "$output_junit")"
+-+
+-+set +e
+-+ctest --test-dir "$build_dir" -R span --output-on-failure --output-junit "$output_junit"
+-+ctest_status=$?
+-+set -e
+-+
+-+python3 - "$output_junit" "$output_json" <<'PY'
+-+import json
+-+import sys
+-+import xml.etree.ElementTree as ET
+-+from pathlib import Path
+-+
+-+xml_path = Path(sys.argv[1])
+-+json_path = Path(sys.argv[2])
+-+
+-+if not xml_path.exists():
+-+    payload = {
+-+        "error": f"JUnit report not found: {xml_path}",
+-+        "testsuites": [],
+-+        "summary": {
+-+            "tests": 0,
+-+            "failures": 0,
+-+            "errors": 0,
+-+            "skipped": 0,
+-+            "time": 0.0,
+-+        },
+-+    }
+-+    json_text = json.dumps(payload, indent=2)
+-+    json_path.write_text(json_text + "\n", encoding="utf-8")
+-+    print(json_text)
+-+    sys.exit(0)
+-+
+-+root = ET.parse(xml_path).getroot()
+-+if root.tag == "testsuite":
+-+    suites = [root]
+-+else:
+-+    suites = root.findall("testsuite")
+-+
+-+payload = {
+-+    "testsuites": [],
+-+    "summary": {
+-+        "tests": 0,
+-+        "failures": 0,
+-+        "errors": 0,
+-+        "skipped": 0,
+-+        "time": 0.0,
+-+    },
+-+}
+-+
+-+for suite in suites:
+-+    suite_payload = {
+-+        "name": suite.attrib.get("name", ""),
+-+        "tests": int(suite.attrib.get("tests", 0)),
+-+        "failures": int(suite.attrib.get("failures", 0)),
+-+        "errors": int(suite.attrib.get("errors", 0)),
+-+        "skipped": int(suite.attrib.get("skipped", 0)),
+-+        "time": float(suite.attrib.get("time", 0.0)),
+-+        "testcases": [],
+-+    }
+-+    for case in suite.findall("testcase"):
+-+        status = "passed"
+-+        details = ""
+-+        if case.find("failure") is not None:
+-+            status = "failed"
+-+            details = case.find("failure").text or ""
+-+        elif case.find("error") is not None:
+-+            status = "error"
+-+            details = case.find("error").text or ""
+-+        elif case.find("skipped") is not None:
+-+            status = "skipped"
+-+            details = case.find("skipped").text or ""
+-+
+-+        suite_payload["testcases"].append(
+-+            {
+-+                "name": case.attrib.get("name", ""),
+-+                "classname": case.attrib.get("classname", ""),
+-+                "time": float(case.attrib.get("time", 0.0)),
+-+                "status": status,
+-+                "details": details.strip(),
+-+            }
+-+        )
+-+
+-+    payload["testsuites"].append(suite_payload)
+-+    payload["summary"]["tests"] += suite_payload["tests"]
+-+    payload["summary"]["failures"] += suite_payload["failures"]
+-+    payload["summary"]["errors"] += suite_payload["errors"]
+-+    payload["summary"]["skipped"] += suite_payload["skipped"]
+-+    payload["summary"]["time"] += suite_payload["time"]
+-+
+-+json_text = json.dumps(payload, indent=2)
+-+json_path.write_text(json_text + "\n", encoding="utf-8")
+-+print(json_text)
+-+PY
+-+
+-+exit "$ctest_status"
