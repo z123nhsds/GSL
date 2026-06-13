@@ -1,9 +1,64 @@
-diff --git a/4.1.3.patch b/4.1.3.patch
-new file mode 100644
-index 0000000..b5d36ca
---- /dev/null
-+++ b/4.1.3.patch
-@@ -0,0 +1,3 @@
-+diff --git a/4.1.3.patch b/4.1.3.patch
-+new file mode 100644
-+index 0000000..e69de29
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 0000000..1111111 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,3 +1,15 @@
++cmake_minimum_required(VERSION 3.14)
++project(safe_app)
++
++# CMake FetchContent 代码，锁定 GSL v4.2.0
++include(FetchContent)
++FetchContent_Declare(
++    GSL
++    GIT_REPOSITORY https://github.com/microsoft/GSL.git
++    GIT_TAG        v4.2.0
++)
++FetchContent_MakeAvailable(GSL)
++
++add_executable(safe_app main.cpp)
++# 链接 Microsoft.GSL::GSL 至目标 safe_app
++target_link_libraries(safe_app PRIVATE Microsoft.GSL::GSL)
+diff --git a/include/gsl/gsl b/include/gsl/gsl
+index 0000000..1111111 100644
+--- a/include/gsl/gsl
++++ b/include/gsl/gsl
+@@ -10,7 +10,7 @@
+ #elif defined(_MSC_VER) && _MSC_VER >= 1950
+-#define GSL_SUPPRESS(x) [[gsl::suppress( #x )]]
++#define GSL_SUPPRESS(x) [[gsl::suppress(#x)]]
+ #elif defined(_MSC_VER) && !defined(__INTEL_COMPILER) && !defined(__NVCC__)
+-#define GSL_SUPPRESS(x) [[gsl::suppress( x )]]
++#define GSL_SUPPRESS(x) [[gsl::suppress(x)]]
+ #else
+ #define GSL_SUPPRESS(x)
+ #endif
+diff --git a/include/gsl/util b/include/gsl/util
+index 0000000..1111111 100644
+--- a/include/gsl/util
++++ b/include/gsl/util
+@@ -120,6 +120,13 @@
+     bool invoke = true;
+ };
+ 
++// 实现 RAII 版本 gsl::finally，捕获异常时仍执行清理动作
++template <class F>
++[[nodiscard]] auto finally(F&& f) noexcept
++{
++    return final_action<std::decay_t<F>>{std::forward<F>(f)};
++}
++
+ // narrow_cast(): a searchable way to do narrowing casts of values
+ template <class T, class U>
+diff --git a/tests/notnull_tests.cpp b/tests/notnull_tests.cpp
+index 0000000..1111111 100644
+--- a/tests/notnull_tests.cpp
++++ b/tests/notnull_tests.cpp
+@@ -100,7 +100,7 @@
+ std::string operator<=(CustomPtr<T> const& lhs, CustomPtr<U> const& rhs)
+ {
+     // clang-format off
+-    GSL_SUPPRESS( type.1 ) // NO-FORMAT: attribute
++    GSL_SUPPRESS(type.1) // NO-FORMAT: attribute
+     // clang-format on
+     return reinterpret_cast<const void*>(lhs.p_) <= reinterpret_cast<const void*>(rhs.p_) ? "true"
+                                                                                           : "false";
