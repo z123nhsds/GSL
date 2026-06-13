@@ -2,6 +2,14 @@ cmake_minimum_required(VERSION 3.14...3.16)
 
 project(GSL VERSION 4.2.0 LANGUAGES CXX)
 
+include(FetchContent)
+
+FetchContent_Declare(GSL
+    GIT_REPOSITORY "https://github.com/microsoft/GSL"
+    GIT_TAG        "v4.2.0"
+    GIT_SHALLOW    ON
+)
+
 add_library(GSL INTERFACE)
 add_library(Microsoft.GSL::GSL ALIAS GSL)
 

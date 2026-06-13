@@ -1,0 +1,177 @@
+name: CI
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ── GCC 12-14 on Ubuntu ─────────────────────────────────────
+          - name: "GCC 12 · C++14 · Debug"
+            os: ubuntu-latest
+            cc: gcc-12
+            cxx: g++-12
+            preset: gcc-14-debug
+          - name: "GCC 12 · C++17 · Release"
+            os: ubuntu-latest
+            cc: gcc-12
+            cxx: g++-12
+            preset: gcc-17-release
+          - name: "GCC 13 · C++20 · Debug"
+            os: ubuntu-latest
+            cc: gcc-13
+            cxx: g++-13
+            preset: gcc-20-debug
+          - name: "GCC 13 · C++23 · Release"
+            os: ubuntu-latest
+            cc: gcc-13
+            cxx: g++-13
+            preset: gcc-23-release
+          - name: "GCC 14 · C++14 · Release"
+            os: ubuntu-latest
+            cc: gcc-14
+            cxx: g++-14
+            preset: gcc-14-release
+          - name: "GCC 14 · C++23 · Debug"
+            os: ubuntu-latest
+            cc: gcc-14
+            cxx: g++-14
+            preset: gcc-23-debug
+
+          # ── Clang 16-18 on Ubuntu ───────────────────────────────────
+          - name: "Clang 16 · C++14 · Debug"
+            os: ubuntu-latest
+            cc: clang-16
+            cxx: clang++-16
+            preset: clang-14-debug
+          - name: "Clang 16 · C++23 · Release"
+            os: ubuntu-latest
+            cc: clang-16
+            cxx: clang++-16
+            preset: clang-23-release
+          - name: "Clang 17 · C++17 · Debug"
+            os: ubuntu-latest
+            cc: clang-17
+            cxx: clang++-17
+            preset: clang-17-debug
+          - name: "Clang 17 · C++20 · Release"
+            os: ubuntu-latest
+            cc: clang-17
+            cxx: clang++-17
+            preset: clang-20-release
+          - name: "Clang 18 · C++14 · Release"
+            os: ubuntu-latest
+            cc: clang-18
+            cxx: clang++-18
+            preset: clang-14-release
+          - name: "Clang 18 · C++23 · Debug"
+            os: ubuntu-latest
+            cc: clang-18
+            cxx: clang++-18
+            preset: clang-23-debug
+
+          # ── XCode 14.3.1 on macOS-13 ───────────────────────────────
+          - name: "XCode 14.3.1 · C++14 · Debug"
+            os: macos-13
+            cc: cc
+            cxx: c++
+            preset: clang-14-debug
+            developer_dir: /Applications/Xcode_14.3.1.app/Contents/Developer
+          - name: "XCode 14.3.1 · C++20 · Release"
+            os: macos-13
+            cc: cc
+            cxx: c++
+            preset: clang-20-release
+            developer_dir: /Applications/Xcode_14.3.1.app/Contents/Developer
+
+          # ── XCode 15.4 on macOS-14 ─────────────────────────────────
+          - name: "XCode 15.4 · C++17 · Debug"
+            os: macos-14
+            cc: cc
+            cxx: c++
+            preset: clang-17-debug
+            developer_dir: /Applications/Xcode_15.4.app/Contents/Developer
+          - name: "XCode 15.4 · C++23 · Release"
+            os: macos-14
+            cc: cc
+            cxx: c++
+            preset: clang-23-release
+            developer_dir: /Applications/Xcode_15.4.app/Contents/Developer
+
+          # ── VS2019 – MSVC ──────────────────────────────────────────
+          - name: "VS2019 MSVC · C++14 · Debug"
+            os: windows-2019
+            cc: cl
+            cxx: cl
+            preset: msvc-14-debug
+            build_config: Debug
+          - name: "VS2019 MSVC · C++17 · Release"
+            os: windows-2019
+            cc: cl
+            cxx: cl
+            preset: msvc-17-release
+            build_config: Release
+
+          # ── VS2022 – MSVC ──────────────────────────────────────────
+          - name: "VS2022 MSVC · C++20 · Debug"
+            os: windows-2022
+            cc: cl
+            cxx: cl
+            preset: msvc-20-debug
+            build_config: Debug
+          - name: "VS2022 MSVC · C++23 · Release"
+            os: windows-2022
+            cc: cl
+            cxx: cl
+            preset: msvc-23-release
+            build_config: Release
+
+          # ── VS2022 – ClangCL ───────────────────────────────────────
+          - name: "VS2022 ClangCL · C++14 · Debug"
+            os: windows-2022
+            cc: clang-cl
+            cxx: clang-cl
+            preset: msvc-14-debug
+            build_config: Debug
+            toolset: "-T ClangCL"
+          - name: "VS2022 ClangCL · C++20 · Release"
+            os: windows-2022
+            cc: clang-cl
+            cxx: clang-cl
+            preset: msvc-20-release
+            build_config: Release
+            toolset: "-T ClangCL"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Select XCode version
+        if: matrix.developer_dir != ''
+        run: sudo xcode-select -s '${{ matrix.developer_dir }}'
+
+      - name: Setup MSBuild
+        if: runner.os == 'Windows'
+        uses: microsoft/setup-msbuild@v3
+
+      - name: Run CMake (configure, build, test)
+        uses: ./.github/workflows/cmake
+        with:
+          cmake_preset: ${{ matrix.preset }}
+          extra_cmake_configure_args: ${{ matrix.toolset || '' }}
+          extra_cmake_build_args: ${{ matrix.build_config && format('--config {0}', matrix.build_config) || '' }}
+          extra_ctest_args: ${{ matrix.build_config && format('-C {0}', matrix.build_config) || '' }}
+        env:
+          CC: ${{ matrix.cc }}
+          CXX: ${{ matrix.cxx }}
